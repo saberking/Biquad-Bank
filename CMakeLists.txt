@@ -69,5 +69,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(neural-ui PRIVATE comctl32)
 
 endif()
+# 1. Enable full optimizations, fast-math, and native SIMD instructions (AVX/AVX2/NEON)
+target_compile_options(${NAME} PRIVATE
+    -O3
+    -Ofast
+    -march=native
+)
 
+# 2. Crucial for Eigen: Disable safety/assert checks so it can compile down to pure SIMD registers
+target_compile_definitions(${NAME} PRIVATE
+    NDEBUG
+)
 

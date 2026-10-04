@@ -136,6 +136,10 @@ protected:
 
         if (ImGui::Begin("neural", nullptr, ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoTitleBar))
         {
+            if(ImGui::Button("Randomise"))
+            {
+                getPluginDPSPointer()->randomise();
+            }
         }
         //if(!ImGui::IsMouseDown(ImGuiMouseButton_Left)) endDrag();
 

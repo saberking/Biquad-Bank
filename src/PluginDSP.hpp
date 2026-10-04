@@ -6,23 +6,31 @@
 #include "WinConsoleOutput.hpp"
 #include "external/base64.h"
 #include "Undo.hpp"
+#include "external/Eigen/Dense"
+#include <atomic>
 
 START_NAMESPACE_DISTRHO
-
+#define OUT_SIZE 24
+#define CONSTANT_KNOB_COUNT 4
 class ImGuiPluginDSP : public Plugin
 {
-    float fA = 1.0f;
-    float fB=1.f;
-    float fC=1.f;
-    float fD=0.25f;
+    float fA = 0.0f;
+    float fB=0.f;
+    float fC=0.f;
+    float fD=0.f;
     bool consoleAttached=false;
 public:
+
 
 
     UndoItem *undoItems[MAX_UNDO_DEPTH];
     int nextUndoIndex=0;
     int undoCount=0,redoCount=0;
-
+    alignas(64) float weightBuffer1[OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT)];
+    alignas(64) float weightBuffer2[OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT)];
+    std::atomic<float *> weightBufferPointer;
+    alignas(64) float inputBuffer[OUT_SIZE+CONSTANT_KNOB_COUNT];
+    alignas(64) float outputBuffer[OUT_SIZE];
     ImGuiPluginDSP()
         : Plugin(kParamCount, 0, 1) // parameters, programs, states
     {
@@ -36,6 +44,72 @@ public:
             undoItems[i]=NULL;
         }
 
+        for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+        {
+            weightBuffer1[i]=0.f;
+        }
+
+        for(int i=0;i<2;i++)
+        {
+            weightBuffer1[i*(OUT_SIZE+CONSTANT_KNOB_COUNT+1)]=1.f;
+        }
+        weightBufferPointer.store(weightBuffer1,std::memory_order_relaxed);
+    }
+    void randomise()
+    {
+        float *inPointer, *outPointer;
+        inPointer=weightBufferPointer.load(std::memory_order_relaxed);
+        outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
+
+        for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+        {
+            outPointer[i]=inPointer[i]+(i%3?0.1:-0.1);
+        }
+
+
+        // outPointer[OUT_SIZE-2]=1.f;
+        // outPointer[(OUT_SIZE+CONSTANT_KNOB_COUNT)+OUT_SIZE-1]=1.f;
+        // for(int i =2;i<OUT_SIZE;i++)
+        // {
+        //     outPointer[(OUT_SIZE+CONSTANT_KNOB_COUNT)*i+i-2]=1.f;
+
+        // }
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
+        Eigen::Matrix<float, OUT_SIZE, OUT_SIZE> squareW = W.block<OUT_SIZE, OUT_SIZE>(0, 0);
+        // 3. Generate a random matrix using Eigen's built-in fast generator
+        Eigen::Matrix<float, OUT_SIZE, OUT_SIZE> X = Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>::Random();
+
+        // 4. Householder QR Decomposition (The Math Trick)
+        // QR decomposition breaks any random matrix X into:
+        // Q (a perfect, pure orthogonal rotation matrix) and R (upper triangular).
+        Eigen::HouseholderQR<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>> qr(X);
+        Eigen::Matrix<float, OUT_SIZE, OUT_SIZE> Q = qr.householderQ();
+        W.block<OUT_SIZE, OUT_SIZE>(0, 0) = W.block<OUT_SIZE, OUT_SIZE>(0, 0) * Q;
+
+        W.diagonal().setConstant(0.1f);
+
+
+        // Eigen::EigenSolver<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>> solver(W.block<OUT_SIZE, OUT_SIZE>(0, 0), false);
+        // float maxMagnitude = 0.0f;
+        // for (int i = 0; i < OUT_SIZE; ++i) {
+        //     maxMagnitude = std::max(maxMagnitude, std::abs(solver.eigenvalues()[i]));
+        // }
+
+        // if (maxMagnitude > 1.0f) {
+        //     W /= maxMagnitude;
+        // }
+
+        // float det = squareW.determinant();
+        // if (det > 0.0f) // The determinant must be positive to take an even root safely
+        // {
+        //     float root = std::pow(det, 1.0f / (float) OUT_SIZE);
+        //     W /= root;
+        // }else if(det<0.0f)
+        // {
+        //     float root = -std::pow(std::abs(det), 1.0f / (float) OUT_SIZE);
+        //     W /= root;
+        // }
+        weightBufferPointer.store(outPointer,std::memory_order_relaxed);
     }
     ~ImGuiPluginDSP(){
         for(int i=0;i<MAX_UNDO_DEPTH;i++)
@@ -57,7 +131,7 @@ protected:
         {
             parameter.ranges.min = -1.f;
             parameter.ranges.max = 1.f;
-            parameter.ranges.def = 1.f;
+            parameter.ranges.def = 0.f;
             parameter.name = "A";
             parameter.symbol = "A";
             parameter.hints=kParameterIsAutomatable;
@@ -66,7 +140,7 @@ protected:
         {
             parameter.ranges.min = -1.f;
             parameter.ranges.max = 1.f;
-            parameter.ranges.def = 1.f;
+            parameter.ranges.def = 0.f;
             parameter.name = "B";
             parameter.symbol = "B";
             parameter.hints=kParameterIsAutomatable;
@@ -75,7 +149,7 @@ protected:
         {
             parameter.ranges.min = -1.f;
             parameter.ranges.max = 1.f;
-            parameter.ranges.def = 1.f;
+            parameter.ranges.def = 0.f;
             parameter.name = "C";
             parameter.symbol = "C";
             parameter.hints=kParameterIsAutomatable;
@@ -84,7 +158,7 @@ protected:
         {
             parameter.ranges.min = -1.f;
             parameter.ranges.max = 1.f;
-            parameter.ranges.def = 0.25f;
+            parameter.ranges.def = 0.f;
             parameter.name = "D";
             parameter.symbol = "D";
             parameter.hints=kParameterIsAutomatable;
@@ -177,11 +251,33 @@ protected:
 
     void run ( const float **inputs, float **outputs, uint32_t frames) override
     {
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(weightBufferPointer.load(std::memory_order_relaxed));
+        Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer);
+        Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
 
-        for ( uint32_t i = 0; i < frames; i++ )
-        {
+        for (uint32_t sample = 0; sample < frames; ++sample) {
+            // 1. Load your sample into your input vector 'x' here...
+            x[0]=inputs[0][sample];x[1]=inputs[1][sample];
+            // 2. Execute the SIMD-accelerated math
+            y.noalias() = W * x;
 
+            y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
 
+            // y = y.unaryExpr([](float val) {
+            //     if (val > 1.25f)  return 1.0f;
+            //     if (val < -1.25f) return -1.0f;
+            //     // Cubic polynomial: smooth S-curve transition
+            //     return val * (1.0f - 0.16f * val * val);
+            // });
+
+            outputs[0][sample]=y[0];outputs[1][sample]=y[1];
+            x.head<OUT_SIZE>() = y;
+
+            // Append your 4 special parameters to the remaining 4 slots of x
+            x[OUT_SIZE] = fA;
+            x[OUT_SIZE+1] = fB;
+            x[OUT_SIZE+2] = fC;
+            x[OUT_SIZE+3] = fD;
         }
 
     }
