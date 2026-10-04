@@ -1,0 +1,9 @@
+[submodule "dpf-widgets"]
+	path = dpf-widgets
+	url = https://github.com/DISTRHO/DPF-Widgets.git
+[submodule "dpf"]
+	path = dpf
+	url = https://github.com/saberking/DPF.git
+[submodule "clap"]
+	path = clap
+	url = https://github.com/free-audio/clap.git
