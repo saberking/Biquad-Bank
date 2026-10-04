@@ -14,6 +14,7 @@
 #include <../clap/include/clap/ext/params.h>
 #include <windows.h>
 #include <commctrl.h> // For SetWindowSubclass API
+#include "PluginDSP.hpp"
 #pragma comment(lib, "comctl32.lib")
 
 
@@ -21,11 +22,11 @@ START_NAMESPACE_DISTRHO
 
 
 //for right click autmoaiton clip
-class ImGuiPluginUI : public UI, public FileDropReceiver
+class ImGuiPluginUI : public UI
 {
     ResizeHandle fResizeHandle;
 public:
-
+    float fA,fB,fC,fD;
     ImGuiPluginUI()
         : UI(DISTRHO_UI_DEFAULT_WIDTH,DISTRHO_UI_DEFAULT_HEIGHT),
         fResizeHandle(this)
@@ -49,11 +50,41 @@ public:
         auto* plugin = static_cast<ImGuiPluginDSP*>(getPluginInstancePointer());
         return plugin;
     }
+    bool checkIfClapAtRuntime()
+    {
+        char fileBuffer[MAX_PATH] = {0};
+        HMODULE hModule = NULL;
 
+        // 🟢 Create a dummy static variable. It lives inside your plugin library's binary memory space.
+        static const int dummyAnchor = 0;
+
+        // 🟢 Pass the address of the dummy anchor variable instead of the member function pointer
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCSTR>(&dummyAnchor), &hModule);
+
+        if (hModule) {
+            GetModuleFileNameA(hModule, fileBuffer, sizeof(fileBuffer));
+            std::string binaryPath(fileBuffer);
+
+            std::transform(binaryPath.begin(), binaryPath.end(), binaryPath.begin(), ::tolower);
+
+            std::string target = ".clap";
+            if (binaryPath.length() >= target.length()) {
+                return (binaryPath.compare(binaryPath.length() - target.length(), target.length(), target) == 0);
+            }
+        }
+        return false; // 🔵 Fallback (VST3, etc.)
+    }
+
+    int getPluginFormat()
+    {   if(checkIfClapAtRuntime())        return 1;
+        return 0;
+    }
 
     void setDirty(){
         //only works in bitwig
-        const uint32_t activeFormat = editor->getPluginFormat();
+        const uint32_t activeFormat = getPluginFormat();
 
         if (activeFormat == 1)
         {
@@ -68,25 +99,25 @@ public:
         }
     }
 
-    Window& getWindow() const override {
-        return UI::getWindow();
-    }
+    // Window& getWindow() const override {
+    //     return UI::getWindow();
+    // }
 
 
 
 protected:
     void parameterChanged(uint32_t index, float value) override {
-        if(index==kA){
-            editor->fA = value;
+        if(index==kParamA){
+            fA = value;
         }
-        if(index==kB){
-            editor->fB=value;
+        if(index==kParamB){
+            fB=value;
         }
-        if(index==kC){
-            editor->fC=value;
+        if(index==kParamC){
+            fC=value;
         }
-        if(index==kD){
-            editor->fD=value;
+        if(index==kParamD){
+            fD=value;
         }
         repaint();
     }

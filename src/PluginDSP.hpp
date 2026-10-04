@@ -14,7 +14,7 @@ class ImGuiPluginDSP : public Plugin
     float fA = 1.0f;
     float fB=1.f;
     float fC=1.f;
-    float fDh=0.25f;
+    float fD=0.25f;
     bool consoleAttached=false;
 public:
 
@@ -53,7 +53,7 @@ protected:
     */
     void initParameter(uint32_t index, Parameter& parameter) override
     {
-        if(index==kA)
+        if(index==kParamA)
         {
             parameter.ranges.min = -1.f;
             parameter.ranges.max = 1.f;
@@ -62,7 +62,7 @@ protected:
             parameter.symbol = "A";
             parameter.hints=kParameterIsAutomatable;
         }
-        if(index==kB)
+        if(index==kParamB)
         {
             parameter.ranges.min = -1.f;
             parameter.ranges.max = 1.f;
@@ -71,7 +71,7 @@ protected:
             parameter.symbol = "B";
             parameter.hints=kParameterIsAutomatable;
         }
-        if(index==kC)
+        if(index==kParamC)
         {
             parameter.ranges.min = -1.f;
             parameter.ranges.max = 1.f;
@@ -80,7 +80,7 @@ protected:
             parameter.symbol = "C";
             parameter.hints=kParameterIsAutomatable;
         }
-        if(index==kD)
+        if(index==kParamD)
         {
             parameter.ranges.min = -1.f;
             parameter.ranges.max = 1.f;
@@ -95,16 +95,16 @@ protected:
 
     float getParameterValue(uint32_t index) const override
     {
-        if(index==kA){
+        if(index==kParamA){
             return fA;
         }
-        if(index==kB){
+        if(index==kParamB){
             return fB;
         }
-        if(index==kC){
+        if(index==kParamC){
             return fC;
         }
-        if(index==kD){
+        if(index==kParamD){
             return fD;
         }
     }
@@ -112,16 +112,16 @@ protected:
 
     void setParameterValue(uint32_t index, float value) override
     {
-        if(index==kA){
+        if(index==kParamA){
             fA=value;
         }
-        if(index==kB){
+        if(index==kParamB){
             fB=value;
         }
-        if(index==kC){
+        if(index==kParamC){
             fC=value;
         }
-        if(index==kD){
+        if(index==kParamD){
             fD=value;
         }
     }

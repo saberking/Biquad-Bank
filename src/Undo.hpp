@@ -3,6 +3,8 @@
 
 #include "src/DistrhoDefines.h"
 #include "Defines.hpp"
+#include <vector>
+#include <atomic>
 START_NAMESPACE_DISTRHO
 #define MAX_UNDO_DEPTH 12
 
@@ -22,12 +24,12 @@ struct UndoItem
     // }
     UndoItem(std::vector<std::atomic<float>> *_data, bool _shouldContinue=false)
     {
-        data.reserve(MAX_SAMPLE_LENGTH);
-        for(int i=0;i<_data->size();i++)
-            data.push_back((*_data)[i].load(std::memory_order_relaxed));
-        atomicDataPtr=_data;
-        isAtomic=true;
-        shouldContinue=_shouldContinue;
+        // data.reserve(MAX_SAMPLE_LENGTH);
+        // for(int i=0;i<_data->size();i++)
+        //     data.push_back((*_data)[i].load(std::memory_order_relaxed));
+        // atomicDataPtr=_data;
+        // isAtomic=true;
+        // shouldContinue=_shouldContinue;
     }
     void apply()
     {
