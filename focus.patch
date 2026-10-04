@@ -1,0 +1,26 @@
+From 97936d051c9c1d1ae1231e304659d51e44f1a098 Mon Sep 17 00:00:00 2001
+From: Saber <saberking321@protonmail.com>
+Date: Sun, 27 Sep 2026 19:31:24 +0100
+Subject: [PATCH] Fix inconsistencies in keyboard focus depending on host,
+ plugin format and OS
+
+---
+ dgl/src/TopLevelWidget.cpp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/dgl/src/TopLevelWidget.cpp b/dgl/src/TopLevelWidget.cpp
+index ab1fa4bf..8ee53d43 100644
+--- a/dgl/src/TopLevelWidget.cpp
++++ b/dgl/src/TopLevelWidget.cpp
+@@ -127,6 +127,8 @@ bool TopLevelWidget::onCharacterInput(const CharacterInputEvent& ev)
+ 
+ bool TopLevelWidget::onMouse(const MouseEvent& ev)
+ {
++    if (ev.press)
++        getWindow().focus();
+     return pData->mouseEvent(ev);
+ }
+ 
+-- 
+2.55.0
+

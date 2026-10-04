@@ -1,19 +1,6 @@
 #ifndef DEFINES_HPP
 #define DEFINES_HPP
-#define MAX_FILE_PATH_LENGTH 256
 
-#define NO_OF_PLOT_CONTEXTS 12
-#define DEBUG 0
-enum DataType{
-    dataTypeEnvelope,
-    dataTypeConvolver,
-    dataTypeWaveL,
-    dataTypeWaveR,
-    dataTypeSpectrumL,
-    dataTypeSpectrumR,
-    dataTypePhaseL,
-    dataTypePhaseR,
-    dataTypeRelease,
-    dataTypeNone
-};
+#define DEBUG 1
+
 #endif // DEFINES_HPP

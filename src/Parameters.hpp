@@ -4,10 +4,10 @@
 
 START_NAMESPACE_DISTRHO
 enum Parameters {
-    kParamSpeed = 0,
-    kParamNoteSensitivity,
-    kParamVelocitySensitivity,
-    kParamReleaseLength,
+    kParamA = 0,
+    kParamB,
+    kParamC,
+    kParamD,
     kParamCount
 };
 END_NAMESPACE_DISTRHO

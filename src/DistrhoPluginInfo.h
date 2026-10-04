@@ -10,13 +10,13 @@
    This is used to identify your plugin before a Plugin instance can be created.
    @note This macro is required.
  */
-#define DISTRHO_PLUGIN_NAME "BAKED"
+#define DISTRHO_PLUGIN_NAME "neural"
 
 /**
    Number of audio inputs the plugin has.
    @note This macro is required.
  */
-#define DISTRHO_PLUGIN_NUM_INPUTS 0
+#define DISTRHO_PLUGIN_NUM_INPUTS 2
 
 /**
    Number of audio outputs the plugin has.
@@ -28,7 +28,7 @@
    The plugin URI when exporting in LV2 format.
    @note This macro is required.
  */
-#define DISTRHO_PLUGIN_URI "B:A:K:D"
+#define DISTRHO_PLUGIN_URI "n:e:u:r"
 
 /**
    Whether the plugin has a custom %UI.
@@ -48,7 +48,7 @@
    @ref DISTRHO_PLUGIN_WANT_MIDI_INPUT is automatically enabled when this is too.
    @see DISTRHO_PLUGIN_WANT_MIDI_INPUT
  */
-#define DISTRHO_PLUGIN_IS_SYNTH 1
+#define DISTRHO_PLUGIN_IS_SYNTH 0
 
 /**
    Enable direct access between the %UI and plugin code.
@@ -68,7 +68,7 @@
    Whether the plugin wants MIDI input.@n
    This is automatically enabled if @ref DISTRHO_PLUGIN_IS_SYNTH is true.
  */
-#define DISTRHO_PLUGIN_WANT_MIDI_INPUT 1
+#define DISTRHO_PLUGIN_WANT_MIDI_INPUT 0
 
 /**
    Whether the plugin wants MIDI output.
@@ -145,7 +145,7 @@
 
    When this macro is defined, the companion DISTRHO_UI_DEFAULT_HEIGHT macro must be defined as well.
  */
-#define DISTRHO_UI_DEFAULT_WIDTH 1335
+#define DISTRHO_UI_DEFAULT_WIDTH 900
 
 /**
    Default UI height to use when creating initial and temporary windows.@n
@@ -156,7 +156,7 @@
 
    When this macro is defined, the companion DISTRHO_UI_DEFAULT_WIDTH macro must be defined as well.
  */
-#define DISTRHO_UI_DEFAULT_HEIGHT 890
+#define DISTRHO_UI_DEFAULT_HEIGHT 700
 
 /**
    Whether the %UI uses NanoVG for drawing instead of the default raw OpenGL calls.@n
@@ -170,7 +170,7 @@
    Enabling this options makes it possible for the user to resize the plugin UI at anytime.
    @see UI::setGeometryConstraints(uint, uint, bool, bool)
  */
-#define DISTRHO_UI_USER_RESIZABLE 1
+#define DISTRHO_UI_USER_RESIZABLE 0
 
 /**
    The %UI URI when exporting in LV2 format.@n
@@ -223,7 +223,7 @@
 
    See http://lv2plug.in/ns/lv2core for more information.
  */
-#define DISTRHO_PLUGIN_LV2_CATEGORY "lv2:InstrumentPlugin"
+#define DISTRHO_PLUGIN_LV2_CATEGORY "lv2:SimulatorPlugin"
 
 /**
    Custom VST3 categories for the plugin.@n
@@ -267,7 +267,7 @@
       - Mono
       - Stereo
  */
-#define DISTRHO_PLUGIN_VST3_CATEGORIES "Instrument|Sampler|Stereo"
+#define DISTRHO_PLUGIN_VST3_CATEGORIES "Fx|Modulation|Stereo"
 
 /**
    Custom CLAP features for the plugin.@n
@@ -325,10 +325,10 @@
       - surround
       - ambisonic
 */
-#define DISTRHO_PLUGIN_CLAP_FEATURES "instrument", "sampler", "stereo"
+#define DISTRHO_PLUGIN_CLAP_FEATURES "audio-effect", "multi-effects", "stereo"
 
 /**
    The plugin id when exporting in CLAP format, in reverse URI form.
    @note This macro is required when building CLAP plugins
 */
-#define DISTRHO_PLUGIN_CLAP_ID "saber.BAKED"
+#define DISTRHO_PLUGIN_CLAP_ID "saber.neural"

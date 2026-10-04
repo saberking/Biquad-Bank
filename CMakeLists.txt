@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.7...3.31)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Debug)
-set(NAME Baked)
+set(NAME neural)
 
 if(NOT CMAKE_TOOLCHAIN_FILE AND DEFINED ENV{CMAKE_TOOLCHAIN_FILE})
     set(CMAKE_TOOLCHAIN_FILE "$ENV{CMAKE_TOOLCHAIN_FILE}" CACHE FILEPATH "Toolchain file")
@@ -36,21 +36,21 @@ dpf_add_plugin(${NAME}
       src/external/base64.cpp
   FILES_UI
       src/PluginUI.cpp
-      src/external/implot.cpp
-      src/external/implot_items.cpp
+      # src/external/implot.cpp
+      # src/external/implot_items.cpp
       dpf-widgets/opengl/DearImGui.cpp)
 
-target_sources(Baked
+target_sources(${NAME}
   PRIVATE
     src/Parameters.hpp
-    src/DragAndDrop.hpp
+    # src/DragAndDrop.hpp
     src/WinConsoleOutput.hpp
-    src/Editor.hpp
-    src/AudioData.hpp
+    # src/Editor.hpp
+    # src/AudioData.hpp
 
     src/PluginDSP.hpp
     src/Defines.hpp
-    src/features.txt
+    # src/features.txt
     src/Undo.hpp
 )
 
@@ -60,7 +60,9 @@ target_include_directories(${NAME} PUBLIC dpf-widgets/opengl)
 target_include_directories(${NAME} PUBLIC dpf-widgets/opengl/DearImGui)
 add_compile_definitions(ImDrawIdx=unsigned\ int)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(neural-ui PRIVATE comctl32)
 
+endif()
 
-target_link_libraries(Baked-ui PRIVATE comctl32)
 
