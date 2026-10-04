@@ -20,6 +20,11 @@ execute_process(
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dpf"
     ERROR_QUIET
 )
+execute_process(
+    COMMAND git apply "${CMAKE_CURRENT_SOURCE_DIR}/focus.patch"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dpf"
+    ERROR_QUIET
+)
 
 add_subdirectory(dpf)
 
