@@ -8,7 +8,9 @@
 #include "Undo.hpp"
 #include "external/Eigen/Dense"
 #include <atomic>
+#include <ctime>
 #include "external/Eigen/SVD" // Make sure to include the SVD header at the top of your file
+#include <random> // <-- ADD THIS LINE HERE
 
 START_NAMESPACE_DISTRHO
 #define OUT_SIZE 10
@@ -23,6 +25,8 @@ class ImGuiPluginDSP : public Plugin
     float fD=0.f;
     float fDelay=0.f;
     bool consoleAttached=false;
+    std::mt19937 gen;
+    std::normal_distribution<float> d;
 public:
     float max_eigenvalue=1.f;
     std::atomic<bool> updateReady=false;
@@ -63,7 +67,9 @@ public:
 
             }
         }
-
+        std::srand(std::time(nullptr));
+        std::random_device rd;
+        gen.seed(rd()); // Seed this specific instance with a hardware random
 
         Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(weightBuffer1);
         W.diagonal().setConstant(1.f);
@@ -117,6 +123,7 @@ public:
         //     }
         // }
         W.block<OUT_SIZE,CONSTANT_KNOB_COUNT>(0,OUT_SIZE).setZero();
+        W.block<2,OUT_SIZE>(0,0).rowwise().normalize();
         //         W.block<OUT_SIZE,2>(0,0)*=0.95f;
         // W.block<2,OUT_SIZE>(0,0)*=0.95f;
 
@@ -169,25 +176,30 @@ public:
 
         Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
 
-        // 3. Generate a random matrix using Eigen's built-in fast generator
-        Eigen::Matrix<float, OUT_SIZE, OUT_SIZE> X = Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>::Random();
+        Eigen::MatrixXf X(OUT_SIZE, OUT_SIZE);
+        for (int r = 0; r < OUT_SIZE; ++r) {
+            for (int c = 0; c < OUT_SIZE; ++c) {
+                X(r, c) = d(gen); // Populating matrix with a true Gaussian profile
+            }
+        }
 
-        // 4. Householder QR Decomposition (The Math Trick)
-        // QR decomposition breaks any random matrix X into:
-        // Q (a perfect, pure orthogonal rotation matrix) and R (upper triangular).
-        Eigen::HouseholderQR<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>> qr(X);
-        Eigen::Matrix<float, OUT_SIZE, OUT_SIZE> Q = qr.householderQ();
-        // FIX: Forcing .eval() on the block multiplication stops the memory race condition.
-        // This guarantees that the weights don't warp into invalid mathematical shapes when clicked rapidly!
-        W.block<OUT_SIZE, OUT_SIZE>(0, 0) = (W.block<OUT_SIZE, OUT_SIZE>(0, 0) * Q * 0.1f).eval() + (W.block<OUT_SIZE, OUT_SIZE>(0, 0) * 0.9f).eval();
+        // A Householder QR acting on a Gaussian matrix produces a perfectly un-biased
+        // Haar-distributed random orthogonal matrix, eliminating Left/Right panning bias!
+        Eigen::HouseholderQR<Eigen::MatrixXf> qr(X);
+        Eigen::MatrixXf Q = qr.householderQ();
 
+        W.block<OUT_SIZE, OUT_SIZE>(0, 0) = (W.block<OUT_SIZE, OUT_SIZE>(0, 0) * Q * 0.1f).eval()
+                                            + (W.block<OUT_SIZE, OUT_SIZE>(0, 0) * 0.9f).eval();
 
+        // Fix noise injection using the same Gaussian distribution profile
+        Eigen::MatrixXf noise(OUT_SIZE, OUT_SIZE);
         const float noiseAmount = 0.05f;
-
-        W.block<OUT_SIZE, OUT_SIZE>(0, 0) = W.block<OUT_SIZE, OUT_SIZE>(0, 0).eval()+ Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>::Random() * noiseAmount;
-
-
-
+        for (int r = 0; r < OUT_SIZE; ++r) {
+            for (int c = 0; c < OUT_SIZE; ++c) {
+                noise(r, c) = d(gen) * noiseAmount;
+            }
+        }
+    W.block<OUT_SIZE, OUT_SIZE>(0, 0) += noise;
         normaliseMatrix(outPointer);
 
         updateReady.store(true,std::memory_order_release);
