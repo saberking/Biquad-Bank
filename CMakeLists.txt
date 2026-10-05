@@ -79,5 +79,6 @@ target_compile_options(${NAME} PRIVATE
 # 2. Crucial for Eigen: Disable safety/assert checks so it can compile down to pure SIMD registers
 target_compile_definitions(${NAME} PRIVATE
     NDEBUG
+        EIGEN_DONT_PARALLELIZE  # 🚀 FIXES MULTI-INSTANCE AUDIO CRASHES PERMANENTLY
 )
 

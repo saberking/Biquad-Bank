@@ -12,6 +12,7 @@
 START_NAMESPACE_DISTRHO
 #define OUT_SIZE 24
 #define CONSTANT_KNOB_COUNT 4
+#define MAX_EIGENVALUE 1.f
 class ImGuiPluginDSP : public Plugin
 {
     float fA = 0.0f;
@@ -63,7 +64,7 @@ public:
 
         for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
         {
-            outPointer[i]=inPointer[i]+(i%3?0.1:-0.1);
+            outPointer[i]=inPointer[i];//+(i%3?0.1:-0.1);
         }
 
 
@@ -86,18 +87,28 @@ public:
         Eigen::Matrix<float, OUT_SIZE, OUT_SIZE> Q = qr.householderQ();
         W.block<OUT_SIZE, OUT_SIZE>(0, 0) = W.block<OUT_SIZE, OUT_SIZE>(0, 0) * Q;
 
-        W.diagonal().setConstant(0.1f);
+
+ // W.diagonal().setConstant(0.1f);//witout this line it ccrash!!!!!!!!!!!!!
+        const float noiseAmount = 1.f;
+
+        // 1. Add noise safely to the main audio feedback block
+        W.block<OUT_SIZE, OUT_SIZE>(0, 0) += Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>::Random() * noiseAmount;
+
+        // 2. Add noise safely to the parameter tracking columns
+        // This completely isolates the knob section so the compiler optimizer cannot glitch
+        W.block<OUT_SIZE, CONSTANT_KNOB_COUNT>(0, OUT_SIZE) += Eigen::Matrix<float, OUT_SIZE, CONSTANT_KNOB_COUNT>::Random() * noiseAmount;
 
 
-        // Eigen::EigenSolver<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>> solver(W.block<OUT_SIZE, OUT_SIZE>(0, 0), false);
-        // float maxMagnitude = 0.0f;
-        // for (int i = 0; i < OUT_SIZE; ++i) {
-        //     maxMagnitude = std::max(maxMagnitude, std::abs(solver.eigenvalues()[i]));
-        // }
-
-        // if (maxMagnitude > 1.0f) {
-        //     W /= maxMagnitude;
-        // }
+        Eigen::EigenSolver<Eigen::Matrix<float, OUT_SIZE-2, OUT_SIZE-2>> solver(W.block<OUT_SIZE-2, OUT_SIZE-2>(2, 2), false);
+        float maxMagnitude = 0.0f;
+        for (int i = 0; i < OUT_SIZE-2; ++i) {
+            maxMagnitude = std::max(maxMagnitude, std::abs(solver.eigenvalues()[i]));
+        }
+        maxMagnitude/=MAX_EIGENVALUE;
+        maxMagnitude+=0.01f;
+        if (maxMagnitude >= 1.0f) {
+            W /= maxMagnitude;
+        }
 
         // float det = squareW.determinant();
         // if (det > 0.0f) // The determinant must be positive to take an even root safely
@@ -251,15 +262,28 @@ protected:
 
     void run ( const float **inputs, float **outputs, uint32_t frames) override
     {
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(weightBufferPointer.load(std::memory_order_relaxed));
+            // Eigen::setNbThreads(1);
+        // Explicitly pass 'Eigen::Unaligned' as the template argument to protect AVX fetches
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>, Eigen::Aligned64>
+            W(weightBufferPointer.load(std::memory_order_relaxed));
+
+        // Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT,
+        //                          Eigen::RowMajor>> W(weightBufferPointer.load(std::memory_order_relaxed));
         Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer);
         Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
 
         for (uint32_t sample = 0; sample < frames; ++sample) {
             // 1. Load your sample into your input vector 'x' here...
             x[0]=inputs[0][sample];x[1]=inputs[1][sample];
+
             // 2. Execute the SIMD-accelerated math
-            y.noalias() = W * x;
+            // y.noalias() = W * x;crash
+
+            for (int i = 0; i < OUT_SIZE; ++i) {
+                y[i] = W.row(i).dot(x);
+            }
+
+                    // y.noalias() = W.lazyProduct(x);
 
             y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
 
