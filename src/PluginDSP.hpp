@@ -16,7 +16,7 @@ START_NAMESPACE_DISTRHO
 #define MAX_EIGENVALUE 1.f
 class ImGuiPluginDSP : public Plugin
 {
-    float fA = 0.0f;
+    float fA = 1.0f;
     float fB=0.f;
     float fC=0.f;
     float fD=0.f;
@@ -106,10 +106,12 @@ public:
             maxMagnitude = std::max(maxMagnitude, std::abs(solver.eigenvalues()[i]));
         }
         maxMagnitude/=MAX_EIGENVALUE;
-        maxMagnitude+=0.01f;
+        maxMagnitude+=0.000001f;
         if (maxMagnitude >= 1.0f) {
             W /= maxMagnitude;
         }
+        W.block<2, OUT_SIZE>(0, 0) += Eigen::Matrix<float, 2, OUT_SIZE>::Random() * noiseAmount;
+        W.block<2,CONSTANT_KNOB_COUNT>(0,OUT_SIZE).setZero();
 
         // float det = squareW.determinant();
         // if (det > 0.0f) // The determinant must be positive to take an even root safely
@@ -143,7 +145,7 @@ protected:
         {
             parameter.ranges.min = -1.f;
             parameter.ranges.max = 1.f;
-            parameter.ranges.def = 0.f;
+            parameter.ranges.def = 1.f;
             parameter.name = "A";
             parameter.symbol = "A";
             parameter.hints=kParameterIsAutomatable;
@@ -301,12 +303,17 @@ protected:
                 for (int c = 0; c < STRIDE; ++c) {
                     sum += rowPtr[c] * rawX[c];
                 }
-                if(r>2&&sum>0.5){
-                    sum=0.25+sum/2;
-                }
-                if(r>2&&sum<-0.5)
+                // if(r>2&&sum>0.5){
+                //     sum=0.25+sum/2;
+                // }
+                // if(r>2&&sum<-0.5)
+                // {
+                //     sum=-0.25+sum/2;
+                // }
+                if(r>2)
                 {
-                    sum=-0.25+sum/2;
+                        sum=std::max(sum,0.f);
+
                 }
 
                 rawY[r] = sum;
