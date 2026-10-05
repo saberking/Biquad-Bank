@@ -12,6 +12,7 @@
 START_NAMESPACE_DISTRHO
 #define OUT_SIZE 24
 #define CONSTANT_KNOB_COUNT 4
+#define STRIDE (OUT_SIZE+CONSTANT_KNOB_COUNT)
 #define MAX_EIGENVALUE 1.f
 class ImGuiPluginDSP : public Plugin
 {
@@ -279,12 +280,30 @@ protected:
             // 2. Execute the SIMD-accelerated math
             // y.noalias() = W * x;crash
 
-            for (int i = 0; i < OUT_SIZE; ++i) {
-                y[i] = W.row(i).dot(x);
+            // y.noalias() = W.lazyProduct(x);even slower
+
+            // for (int i = 0; i < OUT_SIZE; ++i) {//doesnbt crash
+            //     y[i] = W.row(i).dot(x);
+            // }
+
+            const float* rawW = W.data();
+            const float* rawX = x.data();
+            float*       rawY = y.data();
+
+
+            // 2. Your ultra-fast, thread-safe unrolled loop compiles perfectly now!
+            for (int r = 0; r < OUT_SIZE; ++r) {
+                float sum = 0.0f;
+
+                // Use rawW instead of the Eigen object W
+                const float* rowPtr = &rawW[r * STRIDE];
+
+                for (int c = 0; c < STRIDE; ++c) {
+                    sum += rowPtr[c] * rawX[c];
+                }
+
+                rawY[r] = sum;
             }
-
-                    // y.noalias() = W.lazyProduct(x);
-
             y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
 
             // y = y.unaryExpr([](float val) {
