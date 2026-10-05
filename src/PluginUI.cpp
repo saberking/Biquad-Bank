@@ -151,6 +151,12 @@ protected:
             if(ImGui::Button("Print matrix")){
                 getPluginDPSPointer()->printMatrix();
             }
+            if(ImGui::Button("Normalise")){
+                getPluginDPSPointer()->normalise();
+            }
+            float tempMaxEigenvalue=getPluginDPSPointer()->max_eigenvalue;
+            ImGui::SliderFloat("Max eigenvalue", &tempMaxEigenvalue, 0.9f,1.f);
+            getPluginDPSPointer()->max_eigenvalue=tempMaxEigenvalue;
         }
         //if(!ImGui::IsMouseDown(ImGuiMouseButton_Left)) endDrag();
 

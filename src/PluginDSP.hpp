@@ -14,7 +14,6 @@ START_NAMESPACE_DISTRHO
 #define OUT_SIZE 10
 #define CONSTANT_KNOB_COUNT 4
 #define STRIDE (OUT_SIZE+CONSTANT_KNOB_COUNT)
-#define MAX_EIGENVALUE 0.99f
 #define MAX_DELAY 10000
 class ImGuiPluginDSP : public Plugin
 {
@@ -25,7 +24,7 @@ class ImGuiPluginDSP : public Plugin
     float fDelay=0.f;
     bool consoleAttached=false;
 public:
-
+    float max_eigenvalue=1.f;
     std::atomic<bool> updateReady=false;
     int lastDelay=0;
 
@@ -68,7 +67,7 @@ public:
 
         Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(weightBuffer1);
         W.diagonal().setConstant(1.f);
-        weightBufferPointer.store(weightBuffer1,std::memory_order_relaxed);
+        weightBufferPointer.store(weightBuffer1,std::memory_order_release);
     }
 
     float findMaxAmplification(float* outPointer)
@@ -102,12 +101,12 @@ public:
             maxMagnitude = std::max(maxMagnitude, std::abs(solver.eigenvalues()[i]));
         }
         std::cout<<"normalise"<<maxMagnitude<<std::endl;
-        maxMagnitude+=0.001f;
-        float mult=MAX_EIGENVALUE/maxMagnitude;
+        //maxMagnitude+=0.001f;
+        float mult=max_eigenvalue/maxMagnitude;
 
         //float mult=1/findMaxAmplification(outPointer);
 
-            W = W.eval()*mult;
+        W *=mult;
 
         // for (int r = 0; r < OUT_SIZE; ++r) {
         //     for (int c = 0; c < OUT_SIZE; ++c) {
@@ -129,21 +128,36 @@ public:
     {
         Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
 
-        Eigen::EigenSolver<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>> solver(W.block<OUT_SIZE, OUT_SIZE>(0, 0), false);
+        Eigen::EigenSolver<Eigen::Matrix<float, OUT_SIZE-2, OUT_SIZE-2>> solver(W.block<OUT_SIZE-2, OUT_SIZE-2>(2, 2), false);
         float maxMagnitude = 0.0f;
-        for (int i = 0; i < OUT_SIZE; ++i) {
+        for (int i = 0; i < OUT_SIZE-2; ++i) {
             maxMagnitude = std::max(maxMagnitude, std::abs(solver.eigenvalues()[i]));
         }
         std::cout<<"maxMAgnitude "<<maxMagnitude<<std::endl;
-        float mult=1/findMaxAmplification(outPointer);
+        //float mult=1/findMaxAmplification(outPointer);
 
     }
 
+    void normalise()
+    {
+        if(updateReady.load(std::memory_order_acquire))return;
+        float *inPointer, *outPointer;
+        inPointer=weightBufferPointer.load(std::memory_order_acquire);
+        outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
+
+        for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+        {
+            outPointer[i]=inPointer[i];//+(i%3?0.1:-0.1);
+        }
+        normaliseMatrix(outPointer);
+
+        updateReady.store(true,std::memory_order_release);
+    }
     void randomise()
     {
-        if(updateReady.load(std::memory_order_relaxed))return;
+        if(updateReady.load(std::memory_order_acquire))return;
         float *inPointer, *outPointer;
-        inPointer=weightBufferPointer.load(std::memory_order_relaxed);
+        inPointer=weightBufferPointer.load(std::memory_order_acquire);
         outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
 
         for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
@@ -176,15 +190,15 @@ public:
 
         normaliseMatrix(outPointer);
 
-        updateReady.store(true,std::memory_order_relaxed);
+        updateReady.store(true,std::memory_order_release);
 
 
     }
     void delay()
     {
-        if(updateReady.load(std::memory_order_relaxed)) return;
+        if(updateReady.load(std::memory_order_acquire)) return;
         float *inPointer, *outPointer;
-        inPointer=weightBufferPointer.load(std::memory_order_relaxed);
+        inPointer=weightBufferPointer.load(std::memory_order_acquire);
         outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
 
         for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
@@ -218,7 +232,7 @@ public:
 
         normaliseMatrix(outPointer);
 
-        updateReady.store(true);
+        updateReady.store(true,std::memory_order_release);
 
 
 
@@ -244,6 +258,89 @@ public:
 protected:
 
 
+
+
+    float clip(float a, float abs=1.f)
+    {
+        return std::max(-1.f*abs,std::min(1.f*abs,a));
+    }
+
+    void run ( const float **inputs, float **outputs, uint32_t frames) override
+    {
+        if(updateReady.load(std::memory_order_acquire))
+        {
+            float *newPointer=(weightBufferPointer.load(std::memory_order_acquire)==weightBuffer1?weightBuffer2:weightBuffer1);
+            weightBufferPointer.store(newPointer,std::memory_order_release);
+            updateReady.store(false,std::memory_order_release);
+
+        }
+        int delay=(int)fDelay;
+        int currentLoopDelay=lastDelay;
+        int lastLoopDelay=currentLoopDelay;
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>, Eigen::Aligned64>
+            W(weightBufferPointer.load(std::memory_order_acquire));
+
+        // Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT,
+        //                          Eigen::RowMajor>> W(weightBufferPointer.load(std::memory_order_relaxed));
+
+        Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
+
+        for (uint32_t sample = 0; sample < frames; ++sample) {
+            currentLoopDelay=lastDelay+((sample+1)*(delay-lastDelay))/frames;
+            inputBufferIndex=(inputBufferIndex+lastLoopDelay-currentLoopDelay+MAX_DELAY+1)%(MAX_DELAY+1);
+            lastLoopDelay=currentLoopDelay;
+            Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[inputBufferIndex]);
+            // Append your 4 special parameters to the remaining 4 slots of x
+            x[OUT_SIZE] = fA;
+            x[OUT_SIZE+1] = fB;
+            x[OUT_SIZE+2] = fC;
+            x[OUT_SIZE+3] = fD;
+            // 1. Load your sample into your input vector 'x' here...
+            x[0]=inputs[0][sample];x[1]=inputs[1][sample];
+
+
+            const float* rawW = W.data();
+            const float* rawX = x.data();
+            float*       rawY = y.data();
+
+
+            // 2. Your ultra-fast, thread-safe unrolled loop compiles perfectly now!
+            for (int r = 0; r < OUT_SIZE; ++r) {
+                float sum = 0.0f;
+
+                // Use rawW instead of the Eigen object W
+                const float* rowPtr = &rawW[r * STRIDE];
+
+                for (int c = 0; c < STRIDE; ++c) {
+                    sum += rowPtr[c] * rawX[c];
+                }
+
+                // if(r>2&&sum<-0.5f)
+                // {
+                //         sum=sum*0.8-0.1f;
+
+                // }
+
+                rawY[r] = sum;
+            }
+            y = y.array().cwiseMax(-100.0f).cwiseMin(100.0f);
+
+
+
+            outputs[0][sample]=clip(y[0]);outputs[1][sample]=clip(y[1]);
+
+            inputBufferIndex=(inputBufferIndex+1)%(MAX_DELAY+1);
+            Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x2(inputBuffer[(inputBufferIndex+currentLoopDelay)%(MAX_DELAY+1)]);
+            x2.head<OUT_SIZE>() = y.eval();
+
+
+        }
+        lastDelay=delay;
+
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Information
     /**
       Initialize the parameter @a index.@n
       This function will be called once, shortly after the plugin is created.
@@ -372,7 +469,7 @@ protected:
         {
             if (strlen(value) == 0 ) {
                 return;
-            }            
+            }
 
 
             std::string decodedBytes = base64_decode(std::string(value));
@@ -383,105 +480,6 @@ protected:
 
         }
     }
-
-    float clip(float a)
-    {
-        return std::max(-1.f,std::min(1.f,a));
-    }
-
-    void run ( const float **inputs, float **outputs, uint32_t frames) override
-    {
-        if(updateReady.load(std::memory_order_relaxed))
-        {
-            updateReady.store(false,std::memory_order_relaxed);
-            float *newPointer=(weightBufferPointer.load()==weightBuffer1?weightBuffer2:weightBuffer1);
-            weightBufferPointer.store(newPointer,std::memory_order_relaxed);
-        }
-        int delay=(int)fDelay;
-        int currentLoopDelay=lastDelay;
-        int lastLoopDelay=currentLoopDelay;
-            // Eigen::setNbThreads(1);
-        // Explicitly pass 'Eigen::Unaligned' as the template argument to protect AVX fetches
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>, Eigen::Aligned64>
-            W(weightBufferPointer.load(std::memory_order_relaxed));
-
-        // Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT,
-        //                          Eigen::RowMajor>> W(weightBufferPointer.load(std::memory_order_relaxed));
-
-        Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
-
-        for (uint32_t sample = 0; sample < frames; ++sample) {
-            currentLoopDelay=lastDelay+((sample+1)*(delay-lastDelay))/frames;
-            inputBufferIndex=(inputBufferIndex+lastLoopDelay-currentLoopDelay+MAX_DELAY+1)%(MAX_DELAY+1);
-            lastLoopDelay=currentLoopDelay;
-            Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[inputBufferIndex]);
-            // Append your 4 special parameters to the remaining 4 slots of x
-            x[OUT_SIZE] = fA;
-            x[OUT_SIZE+1] = fB;
-            x[OUT_SIZE+2] = fC;
-            x[OUT_SIZE+3] = fD;
-            // 1. Load your sample into your input vector 'x' here...
-            x[0]=inputs[0][sample];x[1]=inputs[1][sample];
-
-            // 2. Execute the SIMD-accelerated math
-            // y.noalias() = W * x;crash
-
-            // y.noalias() = W.lazyProduct(x);even slower
-
-            // for (int i = 0; i < OUT_SIZE; ++i) {//doesnbt crash
-            //     y[i] = W.row(i).dot(x);
-            // }
-
-            const float* rawW = W.data();
-            const float* rawX = x.data();
-            float*       rawY = y.data();
-
-
-            // 2. Your ultra-fast, thread-safe unrolled loop compiles perfectly now!
-            for (int r = 0; r < OUT_SIZE; ++r) {
-                float sum = 0.0f;
-
-                // Use rawW instead of the Eigen object W
-                const float* rowPtr = &rawW[r * STRIDE];
-
-                for (int c = 0; c < STRIDE; ++c) {
-                    sum += rowPtr[c] * rawX[c];
-                }
-
-                // if(r>2&&sum<-0.5f)
-                // {
-                //         sum=sum*0.8-0.1f;
-
-                // }
-
-                rawY[r] = sum;
-            }
-            // y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
-
-            // y = y.unaryExpr([](float val) {
-            //     if (val > 1.25f)  return 1.0f;
-            //     if (val < -1.25f) return -1.0f;
-            //     // Cubic polynomial: smooth S-curve transition
-            //     return val * (1.0f - 0.16f * val * val);
-            // });
-
-            outputs[0][sample]=clip(y[0]);outputs[1][sample]=clip(y[1]);
-            // FIX: Adding .eval() forces the compiler to completely finish your loops
-            // and evaluate 'y' into a safe register state before writing a single bit into 'x'.
-            inputBufferIndex=(inputBufferIndex+1)%(MAX_DELAY+1);
-            Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x2(inputBuffer[(inputBufferIndex+currentLoopDelay)%(MAX_DELAY+1)]);
-            x2.head<OUT_SIZE>() = y.eval();
-            // x.head<OUT_SIZE>() = y;
-
-
-        }
-        lastDelay=delay;
-
-    }
-
-    // ----------------------------------------------------------------------------------------------------------------
-    // Information
-
     /**
       Get the plugin label.@n
       This label is a short restricted name consisting of only _, a-z, A-Z and 0-9 characters.
