@@ -13,7 +13,7 @@
 #include <random> // <-- ADD THIS LINE HERE
 
 START_NAMESPACE_DISTRHO
-#define OUT_SIZE 10
+#define OUT_SIZE 30
 #define CONSTANT_KNOB_COUNT 4
 #define STRIDE (OUT_SIZE+CONSTANT_KNOB_COUNT)
 #define MAX_DELAY 10000
@@ -338,7 +338,7 @@ protected:
 
                 rawY[r] = sum;
             }
-            y = y.array().cwiseMax(-100.0f).cwiseMin(100.0f);
+            y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
 
 
 
