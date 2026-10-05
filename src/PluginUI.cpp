@@ -27,6 +27,7 @@ class ImGuiPluginUI : public UI
     ResizeHandle fResizeHandle;
 public:
     float fA,fB,fC,fD;
+    float fDelay;
     ImGuiPluginUI()
         : UI(DISTRHO_UI_DEFAULT_WIDTH,DISTRHO_UI_DEFAULT_HEIGHT),
         fResizeHandle(this)
@@ -119,6 +120,9 @@ protected:
         if(index==kParamD){
             fD=value;
         }
+        if(index==kParamDelay){
+            fDelay=value;
+        }
         repaint();
     }
 
@@ -139,6 +143,10 @@ protected:
             if(ImGui::Button("Randomise"))
             {
                 getPluginDPSPointer()->randomise();
+            }
+            if(ImGui::Button("Delay"))
+            {
+                getPluginDPSPointer()->delay();
             }
         }
         //if(!ImGui::IsMouseDown(ImGuiMouseButton_Left)) endDrag();

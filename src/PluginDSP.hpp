@@ -10,14 +10,14 @@
 #include <atomic>
 
 START_NAMESPACE_DISTRHO
-#define OUT_SIZE 36
+#define OUT_SIZE 18
 #define CONSTANT_KNOB_COUNT 4
 #define STRIDE (OUT_SIZE+CONSTANT_KNOB_COUNT)
 #define MAX_EIGENVALUE 1.f
-#define MAX_DELAY 1000
+#define MAX_DELAY 10000
 class ImGuiPluginDSP : public Plugin
 {
-    float fA = 1.0f;
+    float fA = 0.0f;
     float fB=0.f;
     float fC=0.f;
     float fD=0.f;
@@ -26,6 +26,7 @@ class ImGuiPluginDSP : public Plugin
 public:
 
 
+    int lastDelay=0;
 
     UndoItem *undoItems[MAX_UNDO_DEPTH];
     int nextUndoIndex=0;
@@ -54,12 +55,78 @@ public:
             weightBuffer1[i]=0.f;
         }
 
-        for(int i=0;i<2;i++)
+        for(int i=0;i<MAX_DELAY+1;i++)
         {
-            weightBuffer1[i*(OUT_SIZE+CONSTANT_KNOB_COUNT+1)]=1.f;
+            for(int j=0;j<OUT_SIZE+CONSTANT_KNOB_COUNT;j++)
+            {
+               inputBuffer[i][j]=0.f;
+
+            }
         }
+
+
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(weightBuffer1);
+        W.diagonal().setConstant(1.f);
+
         weightBufferPointer.store(weightBuffer1,std::memory_order_relaxed);
     }
+
+    void normaliseMatrix(float *outPointer)
+    {
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
+
+        Eigen::EigenSolver<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>> solver(W.block<OUT_SIZE, OUT_SIZE>(0, 0), false);
+        float maxMagnitude = 0.0f;
+        for (int i = 0; i < OUT_SIZE; ++i) {
+            maxMagnitude = std::max(maxMagnitude, std::abs(solver.eigenvalues()[i]));
+        }
+        maxMagnitude/=MAX_EIGENVALUE;
+        maxMagnitude+=0.001f;
+            W /= maxMagnitude;
+        // W.block<2, OUT_SIZE>(0, 0) += Eigen::Matrix<float, 2, OUT_SIZE>::Random() * noiseAmount;
+        W.block<2,CONSTANT_KNOB_COUNT>(0,OUT_SIZE).setZero();
+    }
+    void delay()
+    {
+        float *inPointer, *outPointer;
+        inPointer=weightBufferPointer.load(std::memory_order_relaxed);
+        outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
+
+        for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+        {
+            outPointer[i]=inPointer[i];//+(i%3?0.1:-0.1);
+        }
+
+
+        // outPointer[OUT_SIZE-2]=1.f;
+        // outPointer[(OUT_SIZE+CONSTANT_KNOB_COUNT)+OUT_SIZE-1]=1.f;
+        // for(int i =2;i<OUT_SIZE;i++)
+        // {
+        //     outPointer[(OUT_SIZE+CONSTANT_KNOB_COUNT)*i+i-2]=1.f;
+
+        // }
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
+
+
+        auto circularSequence = (Eigen::VectorXi::LinSpaced(OUT_SIZE, -2, OUT_SIZE - 3).array() + OUT_SIZE)
+                                    .unaryExpr([](int val) { return val % OUT_SIZE; });
+
+        // 2. COMPILER-SAFE REWRITE: Create a temporary copy of the old matrix state
+        // This completely stops memory aliasing bugs without needing Eigen::all!
+        Eigen::Matrix<float, OUT_SIZE, OUT_SIZE + CONSTANT_KNOB_COUNT, Eigen::RowMajor> tempW = W;
+
+        // 3. Remap the rows sequentially
+        for (int i = 0; i < OUT_SIZE; ++i) {
+            int targetRowIndex = circularSequence[i];
+            W.row(i) += tempW.row(targetRowIndex)*0.2f; // Cleanly assigns the whole row
+        }
+
+        normaliseMatrix(outPointer);
+        weightBufferPointer.store(outPointer,std::memory_order_relaxed);
+
+
+    }
+
     void randomise()
     {
         float *inPointer, *outPointer;
@@ -80,7 +147,7 @@ public:
 
         // }
         Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
-        Eigen::Matrix<float, OUT_SIZE, OUT_SIZE> squareW = W.block<OUT_SIZE, OUT_SIZE>(0, 0);
+
         // 3. Generate a random matrix using Eigen's built-in fast generator
         Eigen::Matrix<float, OUT_SIZE, OUT_SIZE> X = Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>::Random();
 
@@ -89,32 +156,21 @@ public:
         // Q (a perfect, pure orthogonal rotation matrix) and R (upper triangular).
         Eigen::HouseholderQR<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>> qr(X);
         Eigen::Matrix<float, OUT_SIZE, OUT_SIZE> Q = qr.householderQ();
-        W.block<OUT_SIZE, OUT_SIZE>(0, 0) = W.block<OUT_SIZE, OUT_SIZE>(0, 0) * Q;
+        // FIX: Forcing .eval() on the block multiplication stops the memory race condition.
+        // This guarantees that the weights don't warp into invalid mathematical shapes when clicked rapidly!
+        W.block<OUT_SIZE, OUT_SIZE>(0, 0) = (W.block<OUT_SIZE, OUT_SIZE>(0, 0) * Q * 0.1f).eval() + (W.block<OUT_SIZE, OUT_SIZE>(0, 0) * 0.9f);
 
 
- // W.diagonal().setConstant(0.1f);//witout this line it ccrash!!!!!!!!!!!!!
-        const float noiseAmount = 1.f;
+        const float noiseAmount = 0.05f;
 
-        // 1. Add noise safely to the main audio feedback block
         W.block<OUT_SIZE, OUT_SIZE>(0, 0) += Eigen::Matrix<float, OUT_SIZE, OUT_SIZE>::Random() * noiseAmount;
 
         // 2. Add noise safely to the parameter tracking columns
         // This completely isolates the knob section so the compiler optimizer cannot glitch
-        W.block<OUT_SIZE, CONSTANT_KNOB_COUNT>(0, OUT_SIZE) += Eigen::Matrix<float, OUT_SIZE, CONSTANT_KNOB_COUNT>::Random() * noiseAmount;
+        // W.block<OUT_SIZE, CONSTANT_KNOB_COUNT>(0, OUT_SIZE) += Eigen::Matrix<float, OUT_SIZE, CONSTANT_KNOB_COUNT>::Random() * noiseAmount;
 
+        normaliseMatrix(outPointer);
 
-        Eigen::EigenSolver<Eigen::Matrix<float, OUT_SIZE-2, OUT_SIZE-2>> solver(W.block<OUT_SIZE-2, OUT_SIZE-2>(2, 2), false);
-        float maxMagnitude = 0.0f;
-        for (int i = 0; i < OUT_SIZE-2; ++i) {
-            maxMagnitude = std::max(maxMagnitude, std::abs(solver.eigenvalues()[i]));
-        }
-        maxMagnitude/=MAX_EIGENVALUE;
-        maxMagnitude+=0.000001f;
-        if (maxMagnitude >= 1.0f) {
-            W /= maxMagnitude;
-        }
-        W.block<2, OUT_SIZE>(0, 0) += Eigen::Matrix<float, 2, OUT_SIZE>::Random() * noiseAmount;
-        W.block<2,CONSTANT_KNOB_COUNT>(0,OUT_SIZE).setZero();
 
         // float det = squareW.determinant();
         // if (det > 0.0f) // The determinant must be positive to take an even root safely
@@ -148,7 +204,7 @@ protected:
         {
             parameter.ranges.min = -1.f;
             parameter.ranges.max = 1.f;
-            parameter.ranges.def = 1.f;
+            parameter.ranges.def = 0.f;
             parameter.name = "A";
             parameter.symbol = "A";
             parameter.hints=kParameterIsAutomatable;
@@ -283,6 +339,9 @@ protected:
 
     void run ( const float **inputs, float **outputs, uint32_t frames) override
     {
+        int delay=(int)fDelay;
+        int currentLoopDelay=lastDelay;
+        int lastLoopDelay=currentLoopDelay;
             // Eigen::setNbThreads(1);
         // Explicitly pass 'Eigen::Unaligned' as the template argument to protect AVX fetches
         Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>, Eigen::Aligned64>
@@ -290,10 +349,19 @@ protected:
 
         // Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT,
         //                          Eigen::RowMajor>> W(weightBufferPointer.load(std::memory_order_relaxed));
-        Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[inputBufferIndex]);
+
         Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
 
         for (uint32_t sample = 0; sample < frames; ++sample) {
+            currentLoopDelay=lastDelay+(sample+1)*(delay-lastDelay)/frames;
+            inputBufferIndex=(inputBufferIndex+lastLoopDelay-currentLoopDelay+MAX_DELAY+1)%(MAX_DELAY+1);
+            lastLoopDelay=currentLoopDelay;
+            Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[inputBufferIndex]);
+            // Append your 4 special parameters to the remaining 4 slots of x
+            x[OUT_SIZE] = fA;
+            x[OUT_SIZE+1] = fB;
+            x[OUT_SIZE+2] = fC;
+            x[OUT_SIZE+3] = fD;
             // 1. Load your sample into your input vector 'x' here...
             x[0]=inputs[0][sample];x[1]=inputs[1][sample];
 
@@ -321,16 +389,10 @@ protected:
                 for (int c = 0; c < STRIDE; ++c) {
                     sum += rowPtr[c] * rawX[c];
                 }
-                // if(r>2&&sum>0.5){
-                //     sum=0.25+sum/2;
-                // }
-                // if(r>2&&sum<-0.5)
-                // {
-                //     sum=-0.25+sum/2;
-                // }
-                if(r>2)
+
+                if(r>2&&sum<-0.5f)
                 {
-                        sum=std::max(sum,0.f);
+                        sum=sum*0.8-0.1f;
 
                 }
 
@@ -349,16 +411,13 @@ protected:
             // FIX: Adding .eval() forces the compiler to completely finish your loops
             // and evaluate 'y' into a safe register state before writing a single bit into 'x'.
             inputBufferIndex=(inputBufferIndex+1)%(MAX_DELAY+1);
-            Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[(inputBufferIndex+(int)fDelay)%(MAX_DELAY+1)]);
-            x.head<OUT_SIZE>() = y.eval();
+            Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x2(inputBuffer[(inputBufferIndex+currentLoopDelay)%(MAX_DELAY+1)]);
+            x2.head<OUT_SIZE>() = y.eval();
             // x.head<OUT_SIZE>() = y;
 
-            // Append your 4 special parameters to the remaining 4 slots of x
-            x[OUT_SIZE] = fA;
-            x[OUT_SIZE+1] = fB;
-            x[OUT_SIZE+2] = fC;
-            x[OUT_SIZE+3] = fD;
+
         }
+        lastDelay=delay;
 
     }
 
