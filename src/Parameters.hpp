@@ -8,6 +8,7 @@ enum Parameters {
     kParamB,
     kParamC,
     kParamD,
+    kParamDelay,
     kParamCount
 };
 END_NAMESPACE_DISTRHO

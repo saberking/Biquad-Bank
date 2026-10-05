@@ -14,12 +14,14 @@ START_NAMESPACE_DISTRHO
 #define CONSTANT_KNOB_COUNT 4
 #define STRIDE (OUT_SIZE+CONSTANT_KNOB_COUNT)
 #define MAX_EIGENVALUE 1.f
+#define MAX_DELAY 1000
 class ImGuiPluginDSP : public Plugin
 {
     float fA = 1.0f;
     float fB=0.f;
     float fC=0.f;
     float fD=0.f;
+    float fDelay=0.f;
     bool consoleAttached=false;
 public:
 
@@ -31,7 +33,8 @@ public:
     alignas(64) float weightBuffer1[OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT)];
     alignas(64) float weightBuffer2[OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT)];
     std::atomic<float *> weightBufferPointer;
-    alignas(64) float inputBuffer[OUT_SIZE+CONSTANT_KNOB_COUNT];
+    alignas(64) float inputBuffer[MAX_DELAY+1][OUT_SIZE+CONSTANT_KNOB_COUNT];
+    int inputBufferIndex=0;
     alignas(64) float outputBuffer[OUT_SIZE];
     ImGuiPluginDSP()
         : Plugin(kParamCount, 0, 1) // parameters, programs, states
@@ -177,6 +180,15 @@ protected:
             parameter.symbol = "D";
             parameter.hints=kParameterIsAutomatable;
         }
+        if(index==kParamDelay)
+        {
+            parameter.ranges.min = 0.f;
+            parameter.ranges.max = MAX_DELAY;
+            parameter.ranges.def = 0.f;
+            parameter.name = "Delay";
+            parameter.symbol = "Delay";
+            parameter.hints=kParameterIsAutomatable;
+        }
 
 
     }
@@ -195,6 +207,9 @@ protected:
         if(index==kParamD){
             return fD;
         }
+        if(index==kParamDelay){
+            return fDelay;
+        }
     }
 
 
@@ -211,6 +226,9 @@ protected:
         }
         if(index==kParamD){
             fD=value;
+        }
+        if(index==kParamDelay){
+            fDelay=value;
         }
     }
 
@@ -272,7 +290,7 @@ protected:
 
         // Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT,
         //                          Eigen::RowMajor>> W(weightBufferPointer.load(std::memory_order_relaxed));
-        Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer);
+        Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[inputBufferIndex]);
         Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
 
         for (uint32_t sample = 0; sample < frames; ++sample) {
@@ -330,6 +348,8 @@ protected:
             outputs[0][sample]=y[0];outputs[1][sample]=y[1];
             // FIX: Adding .eval() forces the compiler to completely finish your loops
             // and evaluate 'y' into a safe register state before writing a single bit into 'x'.
+            inputBufferIndex=(inputBufferIndex+1)%(MAX_DELAY+1);
+            Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[(inputBufferIndex+(int)fDelay)%(MAX_DELAY+1)]);
             x.head<OUT_SIZE>() = y.eval();
             // x.head<OUT_SIZE>() = y;
 
