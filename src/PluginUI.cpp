@@ -148,6 +148,9 @@ protected:
             {
                 getPluginDPSPointer()->delay();
             }
+            if(ImGui::Button("Print matrix")){
+                getPluginDPSPointer()->printMatrix();
+            }
         }
         //if(!ImGui::IsMouseDown(ImGuiMouseButton_Left)) endDrag();
 
