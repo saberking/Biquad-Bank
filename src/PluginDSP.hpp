@@ -301,10 +301,17 @@ protected:
                 for (int c = 0; c < STRIDE; ++c) {
                     sum += rowPtr[c] * rawX[c];
                 }
+                if(r>2&&sum>0.5){
+                    sum=0.25+sum/2;
+                }
+                if(r>2&&sum<-0.5)
+                {
+                    sum=-0.25+sum/2;
+                }
 
                 rawY[r] = sum;
             }
-            y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
+            // y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
 
             // y = y.unaryExpr([](float val) {
             //     if (val > 1.25f)  return 1.0f;
@@ -314,7 +321,10 @@ protected:
             // });
 
             outputs[0][sample]=y[0];outputs[1][sample]=y[1];
-            x.head<OUT_SIZE>() = y;
+            // FIX: Adding .eval() forces the compiler to completely finish your loops
+            // and evaluate 'y' into a safe register state before writing a single bit into 'x'.
+            x.head<OUT_SIZE>() = y.eval();
+            // x.head<OUT_SIZE>() = y;
 
             // Append your 4 special parameters to the remaining 4 slots of x
             x[OUT_SIZE] = fA;
