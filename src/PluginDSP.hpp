@@ -102,7 +102,7 @@ public:
         }
         std::cout<<"normalise"<<maxMagnitude<<std::endl;
         //maxMagnitude+=0.001f;
-        float mult=max_eigenvalue/maxMagnitude;
+        float mult=max_eigenvalue/std::max(0.001f,maxMagnitude);
 
         //float mult=1/findMaxAmplification(outPointer);
 
@@ -243,10 +243,10 @@ public:
     void printMatrix()
     {
         for(int i=0;i<OUT_SIZE;i++){
-            for(int j=0;j<OUT_SIZE+CONSTANT_KNOB_COUNT;j++)        std::cout<<weightBufferPointer.load(std::memory_order_relaxed)[i*(OUT_SIZE+CONSTANT_KNOB_COUNT)+j]<<" ";
+            for(int j=0;j<OUT_SIZE+CONSTANT_KNOB_COUNT;j++)        std::cout<<weightBufferPointer.load(std::memory_order_acquire)[i*(OUT_SIZE+CONSTANT_KNOB_COUNT)+j]<<" ";
             std::cout<<std::endl;
         }
-        printEigen(weightBufferPointer.load(std::memory_order_relaxed));
+        printEigen(weightBufferPointer.load(std::memory_order_acquire));
     }
     ~ImGuiPluginDSP(){
         for(int i=0;i<MAX_UNDO_DEPTH;i++)
@@ -267,6 +267,7 @@ protected:
 
     void run ( const float **inputs, float **outputs, uint32_t frames) override
     {
+
         if(updateReady.load(std::memory_order_acquire))
         {
             float *newPointer=(weightBufferPointer.load(std::memory_order_acquire)==weightBuffer1?weightBuffer2:weightBuffer1);
@@ -287,7 +288,9 @@ protected:
 
         for (uint32_t sample = 0; sample < frames; ++sample) {
             currentLoopDelay=lastDelay+((sample+1)*(delay-lastDelay))/frames;
-            inputBufferIndex=(inputBufferIndex+lastLoopDelay-currentLoopDelay+MAX_DELAY+1)%(MAX_DELAY+1);
+            int newIndex=(inputBufferIndex+lastLoopDelay-currentLoopDelay+MAX_DELAY+1)%(MAX_DELAY+1);
+            if(newIndex<0)std::cout<<"ERRORR!!!!!"<<"ERRRORRRR!!!!!!"<<std::endl<<std::endl;
+            else inputBufferIndex=newIndex;
             lastLoopDelay=currentLoopDelay;
             Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[inputBufferIndex]);
             // Append your 4 special parameters to the remaining 4 slots of x
@@ -327,7 +330,7 @@ protected:
 
 
 
-            outputs[0][sample]=clip(y[0]);outputs[1][sample]=clip(y[1]);
+            outputs[0][sample]=clip(y[0],2);outputs[1][sample]=clip(y[1],2);
 
             inputBufferIndex=(inputBufferIndex+1)%(MAX_DELAY+1);
             Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x2(inputBuffer[(inputBufferIndex+currentLoopDelay)%(MAX_DELAY+1)]);
