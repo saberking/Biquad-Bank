@@ -13,6 +13,18 @@
 #include <random> // <-- ADD THIS LINE HERE
 
 START_NAMESPACE_DISTRHO
+    enum ActivationFunctionType{
+    activationFunctionClip,
+    activationFunctionTanh,
+    activationFunctionNone,
+    activationFunctionCount
+};
+static const char* activationFunctionNames[]={
+        "Clip",
+        "Tanh",
+        "None"
+    };
+
 #define OUT_SIZE 30
 #define CONSTANT_KNOB_COUNT 4
 #define STRIDE (OUT_SIZE+CONSTANT_KNOB_COUNT)
@@ -28,6 +40,7 @@ class ImGuiPluginDSP : public Plugin
     std::mt19937 gen;
     std::normal_distribution<float> d;
 public:
+    std::atomic<ActivationFunctionType> activation=activationFunctionClip;
     float max_eigenvalue=1.f;
     std::atomic<bool> updateReady=false;
     int lastDelay=0;
@@ -276,9 +289,20 @@ protected:
     {
         return std::max(-1.f*abs,std::min(1.f*abs,a));
     }
+    inline float fastTanh(float x) {
+        // Clamp input to prevent polynomial divergence at high values
+        float x_clamped = std::max(-4.5f, std::min(4.5f, x));
+        float x2 = x_clamped * x_clamped;
+
+        // Pade approximation: highly accurate, no division loops, zero hardware stalls
+        return x_clamped * (135135.0f + x2 * (17325.0f + x2 * (378.0f + x2))) /
+               (135135.0f + x2 * (62370.0f + x2 * (3150.0f + x2 * 28.0f)));
+    }
+
 
     void run ( const float **inputs, float **outputs, uint32_t frames) override
     {
+        ActivationFunctionType activationFunction=activation.load(std::memory_order_release);
 
         if(updateReady.load(std::memory_order_acquire))
         {
@@ -338,7 +362,18 @@ protected:
 
                 rawY[r] = sum;
             }
-            y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
+            if(activationFunction==activationFunctionClip)
+            {
+                y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
+
+            }
+            if(activationFunction==activationFunctionTanh)
+            {
+                float* rawY = y.data();
+                for (int r = 0; r < OUT_SIZE; ++r) {
+                    rawY[r] = fastTanh(rawY[r]);
+                }
+            }
 
 
 

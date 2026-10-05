@@ -157,6 +157,32 @@ protected:
             float tempMaxEigenvalue=getPluginDPSPointer()->max_eigenvalue;
             ImGui::SliderFloat("Max eigenvalue", &tempMaxEigenvalue, 0.9f,1.f);
             getPluginDPSPointer()->max_eigenvalue=tempMaxEigenvalue;
+
+
+            ActivationFunctionType type=getPluginDPSPointer()->activation.load(std::memory_order_relaxed);
+            // 2. Render the dropdown
+            if (ImGui::BeginCombo("Activation function##UniqueLabel", activationFunctionNames[type]))
+            {
+                for (int i = 0; i < activationFunctionCount; ++i)
+                {
+                    const bool is_selected = (type == i);
+
+                    // Render each item as selectable
+                    if (ImGui::Selectable(activationFunctionNames[i], is_selected))
+                    {
+                        type = (ActivationFunctionType)i; // Update selection state on click
+                    }
+
+                    // Set the initial keyboard/scroll focus to the currently active selection
+                    if (is_selected)
+                    {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo(); // Always call EndCombo if BeginCombo returns true
+            }
+            getPluginDPSPointer()->activation.store(type,std::memory_order_relaxed);
+
         }
         //if(!ImGui::IsMouseDown(ImGuiMouseButton_Left)) endDrag();
 
