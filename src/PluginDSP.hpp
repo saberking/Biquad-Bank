@@ -39,6 +39,7 @@ class ImGuiPluginDSP : public Plugin
     bool consoleAttached=false;
     std::mt19937 gen;
     std::normal_distribution<float> d;
+    float note=1.f,lastNote=1.f;
 public:
     std::atomic<ActivationFunctionType> activation=activationFunctionClip;
     float max_eigenvalue=1.f;
@@ -299,10 +300,41 @@ protected:
         return x_clamped * (135135.0f + x2 * (17325.0f + x2 * (378.0f + x2))) /
                (135135.0f + x2 * (62370.0f + x2 * (3150.0f + x2 * 28.0f)));
     }
+    void noteOn(int midiNote, float velocity){
+        lastNote=note;
+        note=std::pow(2.f, -(float)midiNote/12.f);
+    }
+
+    void noteOff(int midiNote){
+
+    }
+
+    void handleMidi(const MidiEvent *midiEvent){
+        int status = midiEvent->data[0]; // midi status
+        int midi_message = status & 0xF0;
+        int midi_data1 = midiEvent->data[1];
+        int midi_data2 = midiEvent->data[2];
+        float velocity=(float)midi_data2;
+        velocity/=128.f;
+        switch ( midi_message )
+        {
+        case 0x80: // note_off
+            noteOff(midi_data1);
+            break;
+        case 0x90: // note_on
+            noteOn(midi_data1, velocity);
+            break;
+        }
+    }
 
 
-    void run ( const float **inputs, float **outputs, uint32_t frames) override
+    void run ( const float **inputs, float **outputs, uint32_t frames,
+             const MidiEvent *midiEvents, // MIDI pointer
+             uint32_t midiEventCount      // Number of MIDI events in block
+             ) override
     {
+        int curEventIndex =0;
+
         ActivationFunctionType activationFunction=activation.load(std::memory_order_release);
 
         if(updateReady.load(std::memory_order_acquire))
@@ -312,7 +344,7 @@ protected:
             updateReady.store(false,std::memory_order_release);
 
         }
-        int delay=std::max(0,std::min((int)fDelay,MAX_DELAY));
+        int delay=(int)std::max(0.f,std::min(fDelay*note,(float)MAX_DELAY));
         int currentLoopDelay=lastDelay;
         int lastLoopDelay=currentLoopDelay;
         Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>, Eigen::Aligned64>
@@ -324,6 +356,16 @@ protected:
         Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
 
         for (uint32_t sample = 0; sample < frames; ++sample) {
+            while ( curEventIndex < midiEventCount && sample == midiEvents[curEventIndex].frame )
+            {
+                handleMidi(&(midiEvents[curEventIndex++]));
+
+            }
+            if(note!=lastNote)
+            {
+                delay=(int)std::max(0.f,std::min(fDelay*note,(float)MAX_DELAY));
+                lastNote=note;
+            }
             int temp=delay-lastDelay;
             int temp2=(temp*((int)sample+1))/(int)frames;
 
@@ -391,7 +433,7 @@ protected:
 
 
         }
-        lastDelay=delay;
+        lastDelay=lastLoopDelay;
 
     }
 
