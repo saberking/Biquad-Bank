@@ -156,7 +156,7 @@
 
    When this macro is defined, the companion DISTRHO_UI_DEFAULT_WIDTH macro must be defined as well.
  */
-#define DISTRHO_UI_DEFAULT_HEIGHT 250
+#define DISTRHO_UI_DEFAULT_HEIGHT 160
 
 /**
    Whether the %UI uses NanoVG for drawing instead of the default raw OpenGL calls.@n

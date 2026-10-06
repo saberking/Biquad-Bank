@@ -25,6 +25,7 @@ START_NAMESPACE_DISTRHO
 class ImGuiPluginUI : public UI
 {
     ResizeHandle fResizeHandle;
+    bool needsNormalise=false;
 public:
     float fA,fB,fC,fD;
     float fDelay;
@@ -37,9 +38,13 @@ public:
 
         setSize(DISTRHO_UI_DEFAULT_WIDTH,DISTRHO_UI_DEFAULT_HEIGHT);
 
-        if (isResizable())
-            fResizeHandle.hide();
 
+            fResizeHandle.hide();
+        // Get the global style object
+        ImGuiStyle& style = ImGui::GetStyle();
+
+        // Set the global window background color
+        style.Colors[ImGuiCol_WindowBg] = ImVec4(63.0f / 255.0f, 72.0f / 255.0f, 77.0f / 255.0f, 0.12f);
 
     }
 
@@ -93,6 +98,7 @@ public:
             if(!clapPointer)return;
             auto* hostState = reinterpret_cast<const clap_host_state_t*>(clapPointer->get_extension(clapPointer, CLAP_EXT_STATE));
             if (hostState != nullptr && hostState->mark_dirty != nullptr) {
+                setParameterValue(kParamDelay,(float)std::max(0,std::min(MAX_DELAY,(int)fDelay)));
 
 
                 hostState->mark_dirty(clapPointer);
@@ -144,19 +150,29 @@ protected:
             {
                 getPluginDPSPointer()->randomise();
             }
-            if(ImGui::Button("Delay"))
+            if(ImGui::Button("Delay##delaybutton"))
             {
                 getPluginDPSPointer()->delay();
             }
-            if(ImGui::Button("Print matrix")){
-                getPluginDPSPointer()->printMatrix();
-            }
-            if(ImGui::Button("Normalise")){
-                getPluginDPSPointer()->normalise();
-            }
+            // if(ImGui::Button("Print matrix")){
+            //     getPluginDPSPointer()->printMatrix();
+            // }
+            // if(ImGui::Button("Normalise")){
+            //     getPluginDPSPointer()->normalise();
+            // }
             float tempMaxEigenvalue=getPluginDPSPointer()->max_eigenvalue;
-            ImGui::SliderFloat("Max eigenvalue", &tempMaxEigenvalue, 0.9f,1.f);
-            getPluginDPSPointer()->max_eigenvalue=tempMaxEigenvalue;
+            if(ImGui::SliderFloat("Max eigenvalue", &tempMaxEigenvalue, 0.9f,1.f))
+            {
+
+                getPluginDPSPointer()->max_eigenvalue=tempMaxEigenvalue;
+                needsNormalise=getPluginDPSPointer()->normalise();
+            }
+
+            if (ImGui::IsItemDeactivated())
+            {
+                editParameter(kParamDelay, false);
+            }
+            if(needsNormalise) needsNormalise=getPluginDPSPointer()->normalise();
 
 
             ActivationFunctionType type=getPluginDPSPointer()->activation.load(std::memory_order_relaxed);
@@ -183,6 +199,17 @@ protected:
             }
             getPluginDPSPointer()->activation.store(type,std::memory_order_relaxed);
 
+            if(ImGui::SliderFloat("Delay##Delayslider",&fDelay,0.f,(float)MAX_DELAY))
+            {
+                if(ImGui::IsItemActivated())
+                    editParameter(kParamDelay,true);
+                setParameterValue(kParamDelay,(float)std::max(0,std::min(MAX_DELAY,(int)fDelay)));
+            }
+
+            if (ImGui::IsItemDeactivated())
+            {
+                editParameter(kParamDelay, false);
+            }
         }
         //if(!ImGui::IsMouseDown(ImGuiMouseButton_Left)) endDrag();
 

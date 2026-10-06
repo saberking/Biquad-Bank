@@ -28,7 +28,7 @@ static const char* activationFunctionNames[]={
 #define OUT_SIZE 30
 #define CONSTANT_KNOB_COUNT 4
 #define STRIDE (OUT_SIZE+CONSTANT_KNOB_COUNT)
-#define MAX_DELAY 10000
+#define MAX_DELAY 1000
 class ImGuiPluginDSP : public Plugin
 {
     float fA = 0.0f;
@@ -158,9 +158,9 @@ public:
 
     }
 
-    void normalise()
+    bool normalise()
     {
-        if(updateReady.load(std::memory_order_acquire))return;
+        if(updateReady.load(std::memory_order_acquire))return true;
         float *inPointer, *outPointer;
         inPointer=weightBufferPointer.load(std::memory_order_acquire);
         outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
@@ -172,6 +172,8 @@ public:
         normaliseMatrix(outPointer);
 
         updateReady.store(true,std::memory_order_release);
+        return false;
+
     }
     void randomise()
     {
@@ -216,7 +218,6 @@ public:
         normaliseMatrix(outPointer);
 
         updateReady.store(true,std::memory_order_release);
-
 
     }
     void delay()
@@ -311,7 +312,7 @@ protected:
             updateReady.store(false,std::memory_order_release);
 
         }
-        int delay=(int)fDelay;
+        int delay=std::max(0,std::min((int)fDelay,MAX_DELAY));
         int currentLoopDelay=lastDelay;
         int lastLoopDelay=currentLoopDelay;
         Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>, Eigen::Aligned64>
@@ -323,9 +324,14 @@ protected:
         Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
 
         for (uint32_t sample = 0; sample < frames; ++sample) {
-            currentLoopDelay=lastDelay+((sample+1)*(delay-lastDelay))/frames;
+            int temp=delay-lastDelay;
+            int temp2=(temp*((int)sample+1))/(int)frames;
+
+            currentLoopDelay=lastDelay+temp2;
             int newIndex=(inputBufferIndex+lastLoopDelay-currentLoopDelay+MAX_DELAY+1)%(MAX_DELAY+1);
-            if(newIndex<0)std::cout<<"ERRORR!!!!!"<<"ERRRORRRR!!!!!!"<<std::endl<<std::endl;
+            if(newIndex<0)std::cout<<"ERRORR!!!!!"<<"ERRRORRRR!!!!!!"<<std::endl<<"current "<<
+                          currentLoopDelay<<" lastD "<<lastDelay<<"   delay "<<delay<<"    sammple "<<sample<<"    frames"<<frames<<
+                    "    temp"<<temp<<"    temp2 "<<temp2<<  std::endl;
             else inputBufferIndex=newIndex;
             lastLoopDelay=currentLoopDelay;
             Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[inputBufferIndex]);
