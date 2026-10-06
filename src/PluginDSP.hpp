@@ -501,12 +501,29 @@ protected:
         if (!strcmp(key,"sampleData"))
         {
 
+            size_t maxEigenSize=sizeof(float);
+            size_t activationSize=sizeof(ActivationFunctionType);
+            size_t matrixSize=sizeof(float)*(OUT_SIZE+CONSTANT_KNOB_COUNT)*OUT_SIZE;
 
-            size_t totalBytes = 0;
+            size_t totalBytes = maxEigenSize+activationSize+matrixSize;
 
             std::vector<uint8_t> rawBinaryBuffer(totalBytes);
             auto *incrementalPointer=rawBinaryBuffer.data();
 
+            auto *maxEigenPointer=reinterpret_cast<float*>(incrementalPointer);
+            *maxEigenPointer=max_eigenvalue;
+            incrementalPointer+=maxEigenSize;
+
+            auto* activationPointer=reinterpret_cast<ActivationFunctionType*>(incrementalPointer);
+            *activationPointer=activation.load(std::memory_order_relaxed);
+            incrementalPointer+=activationSize;
+
+            auto *matrixPtr=reinterpret_cast<float*>(incrementalPointer);
+            auto *buffer=weightBufferPointer.load(std::memory_order_relaxed);
+            for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+            {
+                matrixPtr[i]=buffer[i];
+            }
 
             std::string encodedText = base64_encode(rawBinaryBuffer.data(), rawBinaryBuffer.size());
             return String(encodedText.c_str());
@@ -526,7 +543,28 @@ protected:
 
             const uint8_t* incrementalPointer = reinterpret_cast<const uint8_t*>(decodedBytes.data());
 
-            // 2. Read the sample length header out of the first 4 bytes
+            size_t maxEigenSize=sizeof(float);
+            size_t activationSize=sizeof(ActivationFunctionType);
+            size_t matrixSize=sizeof(float)*(OUT_SIZE+CONSTANT_KNOB_COUNT)*OUT_SIZE;
+
+
+            auto *maxEigenPointer=reinterpret_cast<const float*>(incrementalPointer);
+            max_eigenvalue=*maxEigenPointer;
+            incrementalPointer+=maxEigenSize;
+
+            auto* activationPointer=reinterpret_cast<const ActivationFunctionType*>(incrementalPointer);
+            activation.store(*activationPointer,std::memory_order_relaxed);
+            incrementalPointer+=activationSize;
+
+            auto *matrixPtr=reinterpret_cast<const float*>(incrementalPointer);
+            updateReady.store(false,std::memory_order_release);
+            auto *buffer=weightBufferPointer.load(std::memory_order_acquire);
+            float *outPointer=(buffer==weightBuffer1?weightBuffer2:weightBuffer1);
+            for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+            {
+                outPointer[i]=matrixPtr[i];
+            }
+            weightBufferPointer.store(outPointer,std::memory_order_release);
 
         }
     }
