@@ -26,7 +26,6 @@ static const char* activationFunctionNames[]={
     };
 
 #define OUT_SIZE 30
-#define CONSTANT_KNOB_COUNT 4
 #define STRIDE (OUT_SIZE+CONSTANT_KNOB_COUNT)
 #define MAX_DELAY 1000
 class ImGuiPluginDSP : public Plugin
@@ -45,6 +44,12 @@ class ImGuiPluginDSP : public Plugin
     std::normal_distribution<float> d;
     float note=1.f,lastNote=1.f;
 public:
+    void swapPointers()
+    {
+        std::atomic<float *> temp=currentBufferPointer.load(std::memory_order_acquire);
+        currentBufferPointer.store(spareBufferPointer,std::memory_order_release);
+        spareBufferPointer.store(temp,std::memory_order_release);
+    }
     std::atomic<ActivationFunctionType> activation=activationFunctionClip;
     float max_eigenvalue=1.f;
     std::atomic<bool> updateReady=false;
@@ -53,10 +58,10 @@ public:
     UndoItem *undoItems[MAX_UNDO_DEPTH];
     int nextUndoIndex=0;
     int undoCount=0,redoCount=0;
-    alignas(64) float weightBuffer1[OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT)];
-    alignas(64) float weightBuffer2[OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT)];
-    std::atomic<float *> weightBufferPointer;
-    alignas(64) float inputBuffer[MAX_DELAY+1][OUT_SIZE+CONSTANT_KNOB_COUNT];
+    alignas(64) float weightBuffer1[OUT_SIZE*(OUT_SIZE)];
+    alignas(64) float weightBuffer2[OUT_SIZE*(OUT_SIZE)];
+    std::atomic<float *> currentBufferPointer,spareBufferPointer;
+    alignas(64) float inputBuffer[MAX_DELAY+1][OUT_SIZE];
     int inputBufferIndex=0;
     alignas(64) float outputBuffer[OUT_SIZE];
     ImGuiPluginDSP()
@@ -91,7 +96,7 @@ public:
 
         Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(weightBuffer1);
         W.diagonal().setConstant(1.f);
-        weightBufferPointer.store(weightBuffer1,std::memory_order_release);
+        currentBufferPointer.store(weightBuffer1,std::memory_order_release);
     }
 
     float findMaxAmplification(float* outPointer)
@@ -167,7 +172,7 @@ public:
     {
         if(updateReady.load(std::memory_order_acquire))return true;
         float *inPointer, *outPointer;
-        inPointer=weightBufferPointer.load(std::memory_order_acquire);
+        inPointer=currentBufferPointer.load(std::memory_order_acquire);
         outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
 
         for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
@@ -184,7 +189,7 @@ public:
     {
         if(updateReady.load(std::memory_order_acquire))return;
         float *inPointer, *outPointer;
-        inPointer=weightBufferPointer.load(std::memory_order_acquire);
+        inPointer=currentBufferPointer.load(std::memory_order_acquire);
         outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
 
         for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
@@ -229,7 +234,7 @@ public:
     {
         if(updateReady.load(std::memory_order_acquire)) return;
         float *inPointer, *outPointer;
-        inPointer=weightBufferPointer.load(std::memory_order_acquire);
+        inPointer=currentBufferPointer.load(std::memory_order_acquire);
         outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
 
         for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
@@ -274,10 +279,10 @@ public:
     void printMatrix()
     {
         for(int i=0;i<OUT_SIZE;i++){
-            for(int j=0;j<OUT_SIZE+CONSTANT_KNOB_COUNT;j++)        std::cout<<weightBufferPointer.load(std::memory_order_acquire)[i*(OUT_SIZE+CONSTANT_KNOB_COUNT)+j]<<" ";
+            for(int j=0;j<OUT_SIZE+CONSTANT_KNOB_COUNT;j++)        std::cout<<currentBufferPointer.load(std::memory_order_acquire)[i*(OUT_SIZE+CONSTANT_KNOB_COUNT)+j]<<" ";
             std::cout<<std::endl;
         }
-        printEigen(weightBufferPointer.load(std::memory_order_acquire));
+        printEigen(currentBufferPointer.load(std::memory_order_acquire));
     }
     ~ImGuiPluginDSP(){
         for(int i=0;i<MAX_UNDO_DEPTH;i++)
@@ -341,21 +346,21 @@ protected:
 
         ActivationFunctionType activationFunction=activation.load(std::memory_order_release);
 
-        if(updateReady.load(std::memory_order_acquire))
-        {
-            float *newPointer=(weightBufferPointer.load(std::memory_order_acquire)==weightBuffer1?weightBuffer2:weightBuffer1);
-            weightBufferPointer.store(newPointer,std::memory_order_release);
-            updateReady.store(false,std::memory_order_release);
+        // if(updateReady.load(std::memory_order_acquire))
+        // {
+        //     float *newPointer=(currentBufferPointer.load(std::memory_order_acquire)==weightBuffer1?weightBuffer2:weightBuffer1);
+        //     currentBufferPointer.store(newPointer,std::memory_order_release);
+        //     updateReady.store(false,std::memory_order_release);
 
-        }
+        // }
         int delay=(int)std::max(0.f,std::min(fDelay*note,(float)MAX_DELAY));
         int currentLoopDelay=lastDelay;
         int lastLoopDelay=currentLoopDelay;
         Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>, Eigen::Aligned64>
-            W(weightBufferPointer.load(std::memory_order_acquire));
+            W(currentBufferPointer.load(std::memory_order_acquire));
 
         // Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT,
-        //                          Eigen::RowMajor>> W(weightBufferPointer.load(std::memory_order_relaxed));
+        //                          Eigen::RowMajor>> W(currentBufferPointer.load(std::memory_order_relaxed));
 
         Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
 
@@ -574,7 +579,7 @@ protected:
             incrementalPointer+=activationSize;
 
             auto *matrixPtr=reinterpret_cast<float*>(incrementalPointer);
-            auto *buffer=weightBufferPointer.load(std::memory_order_relaxed);
+            auto *buffer=currentBufferPointer.load(std::memory_order_relaxed);
             for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
             {
                 matrixPtr[i]=buffer[i];
@@ -613,13 +618,13 @@ protected:
 
             auto *matrixPtr=reinterpret_cast<const float*>(incrementalPointer);
             updateReady.store(false,std::memory_order_release);
-            auto *buffer=weightBufferPointer.load(std::memory_order_acquire);
+            auto *buffer=currentBufferPointer.load(std::memory_order_acquire);
             float *outPointer=(buffer==weightBuffer1?weightBuffer2:weightBuffer1);
             for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
             {
                 outPointer[i]=matrixPtr[i];
             }
-            weightBufferPointer.store(outPointer,std::memory_order_release);
+            currentBufferPointer.store(outPointer,std::memory_order_release);
 
         }
     }

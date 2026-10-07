@@ -156,29 +156,29 @@ protected:
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(ImVec2(width , height ));
 
-        if (ImGui::Begin("neural", nullptr, ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoTitleBar))
+        if (ImGui::Begin("Biquad Bank", nullptr, ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoTitleBar))
         {
-            if(ImGui::Button("Randomise"))
-            {
-                getPluginDPSPointer()->randomise();
-            }
-            if(ImGui::Button("Delay##delaybutton"))
-            {
-                getPluginDPSPointer()->delay();
-            }
+            // if(ImGui::Button("Randomise"))
+            // {
+            //     getPluginDPSPointer()->randomise();
+            // }
+            // if(ImGui::Button("Delay##delaybutton"))
+            // {
+            //     getPluginDPSPointer()->delay();
+            // }
             // if(ImGui::Button("Print matrix")){
             //     getPluginDPSPointer()->printMatrix();
             // }
             // if(ImGui::Button("Normalise")){
             //     getPluginDPSPointer()->normalise();
             // }
-            float tempMaxEigenvalue=getPluginDPSPointer()->max_eigenvalue;
-            if(ImGui::SliderFloat("Max eigenvalue", &tempMaxEigenvalue, 0.9f,1.f))
-            {
+            // float tempMaxEigenvalue=getPluginDPSPointer()->max_eigenvalue;
+            // if(ImGui::SliderFloat("Max eigenvalue", &tempMaxEigenvalue, 0.9f,1.f))
+            // {
 
-                getPluginDPSPointer()->max_eigenvalue=tempMaxEigenvalue;
-                needsNormalise=getPluginDPSPointer()->normalise();
-            }
+            //     getPluginDPSPointer()->max_eigenvalue=tempMaxEigenvalue;
+            //     needsNormalise=getPluginDPSPointer()->normalise();
+            // }
 
             if (ImGui::IsItemDeactivated())
             {

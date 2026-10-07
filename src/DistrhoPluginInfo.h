@@ -82,7 +82,7 @@
    so Plugin::canRequestParameterValueChanges() can be used to query support at runtime.
    @see Plugin::requestParameterValueChange(uint32_t, float)
  */
-#define DISTRHO_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST 0
+#define DISTRHO_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST 1
 
 /**
    Whether the plugin provides its own internal programs.
