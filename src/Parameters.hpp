@@ -1,13 +1,13 @@
 #ifndef PARAMETERS_HPP
 #define PARAMETERS_HPP
 #include "src/DistrhoDefines.h"
+#include "Defines.hpp"
 
 START_NAMESPACE_DISTRHO
 enum Parameters {
-    kParamA = 0,
-    kParamB,
-    kParamC,
-    kParamD,
+#define X(i) kParamA##i, kParamB##i, kParamC##i, kParamD##i,
+    BIQUAD_LIST
+#undef X
     kParamDelay,
     kParamCount
 };

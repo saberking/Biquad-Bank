@@ -31,10 +31,14 @@ static const char* activationFunctionNames[]={
 #define MAX_DELAY 1000
 class ImGuiPluginDSP : public Plugin
 {
-    float fA = 0.0f;
-    float fB=0.f;
-    float fC=0.f;
-    float fD=0.f;
+#define X(i) \
+    float fA##i=0.0f;\
+    float fB##i=0.f;\
+    float fC##i=0.f;\
+    float fD##i=0.f;
+
+    BIQUAD_LIST
+#undef X
     float fDelay=0.f;
     bool consoleAttached=false;
     std::mt19937 gen;
@@ -378,10 +382,10 @@ protected:
             lastLoopDelay=currentLoopDelay;
             Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[inputBufferIndex]);
             // Append your 4 special parameters to the remaining 4 slots of x
-            x[OUT_SIZE] = fA;
-            x[OUT_SIZE+1] = fB;
-            x[OUT_SIZE+2] = fC;
-            x[OUT_SIZE+3] = fD;
+            // x[OUT_SIZE] = fA;
+            // x[OUT_SIZE+1] = fB;
+            // x[OUT_SIZE+2] = fC;
+            // x[OUT_SIZE+3] = fD;
             // 1. Load your sample into your input vector 'x' here...
             x[0]=inputs[0][sample];x[1]=inputs[1][sample];
 
@@ -439,75 +443,70 @@ protected:
 
     // ----------------------------------------------------------------------------------------------------------------
     // Information
-    /**
-      Initialize the parameter @a index.@n
-      This function will be called once, shortly after the plugin is created.
-    */
     void initParameter(uint32_t index, Parameter& parameter) override
     {
-        if(index==kParamA)
-        {
-            parameter.ranges.min = -1.f;
-            parameter.ranges.max = 1.f;
-            parameter.ranges.def = 0.f;
-            parameter.name = "A";
-            parameter.symbol = "A";
-            parameter.hints=kParameterIsAutomatable;
+        parameter.hints = kParameterIsAutomatable;
+
+// Handle standard biquad parameter generations
+#define X(i) \
+        if(index == kParamA##i) { \
+                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.name = "Biquad " #i " A"; \
+                parameter.symbol = "biquad_" #i "_a"; \
+                parameter.hints=kParameterIsAutomatable; \
+                return; \
+        } \
+            if(index == kParamB##i) { \
+                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.name = "Biquad " #i " B"; \
+                parameter.symbol = "biquad_" #i "_b"; \
+                                    parameter.hints=kParameterIsAutomatable; \
+                return; \
+        } \
+            if(index == kParamC##i) { \
+                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.name = "Biquad " #i " C"; \
+                parameter.symbol = "biquad_" #i "_c"; \
+                        parameter.hints=kParameterIsAutomatable; \
+                return; \
+        } \
+            if(index == kParamD##i) { \
+                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.name = "Biquad " #i " D"; \
+                parameter.symbol = "biquad_" #i "_d"; \
+                        parameter.hints=kParameterIsAutomatable; \
+                return; \
         }
-        if(index==kParamB)
-        {
-            parameter.ranges.min = -1.f;
-            parameter.ranges.max = 1.f;
-            parameter.ranges.def = 0.f;
-            parameter.name = "B";
-            parameter.symbol = "B";
-            parameter.hints=kParameterIsAutomatable;
-        }
-        if(index==kParamC)
-        {
-            parameter.ranges.min = -1.f;
-            parameter.ranges.max = 1.f;
-            parameter.ranges.def = 0.f;
-            parameter.name = "C";
-            parameter.symbol = "C";
-            parameter.hints=kParameterIsAutomatable;
-        }
-        if(index==kParamD)
-        {
-            parameter.ranges.min = -1.f;
-            parameter.ranges.max = 1.f;
-            parameter.ranges.def = 0.f;
-            parameter.name = "D";
-            parameter.symbol = "D";
-            parameter.hints=kParameterIsAutomatable;
-        }
-        if(index==kParamDelay)
-        {
-            parameter.ranges.min = 0.f;
-            parameter.ranges.max = MAX_DELAY;
-            parameter.ranges.def = 0.f;
+        BIQUAD_LIST
+#undef X
+
+            // Handle Delay
+            if(index == kParamDelay) {
+            parameter.ranges = ParameterRanges(0.f, 0.f, MAX_DELAY);
             parameter.name = "Delay";
-            parameter.symbol = "Delay";
-            parameter.hints=kParameterIsAutomatable;
+            parameter.symbol = "delay";
         }
-
-
     }
 
     float getParameterValue(uint32_t index) const override
     {
-        if(index==kParamA){
-            return fA;
+
+#define X(i) \
+        if(index == kParamA##i) { \
+                return fA##i; \
+        } \
+        if(index==kParamB##i){\
+            return fB##i;\
+        }\
+        if(index==kParamC##i){\
+            return fC##i;\
+        }\
+        if(index==kParamD##i){\
+            return fD##i;\
         }
-        if(index==kParamB){
-            return fB;
-        }
-        if(index==kParamC){
-            return fC;
-        }
-        if(index==kParamD){
-            return fD;
-        }
+        BIQUAD_LIST
+#undef X
+
         if(index==kParamDelay){
             return fDelay;
         }
@@ -516,21 +515,29 @@ protected:
 
     void setParameterValue(uint32_t index, float value) override
     {
-        if(index==kParamA){
-            fA=value;
+        #define X(i) \
+        if(index==kParamA##i){\
+            fA##i=value;\
+        }\
+        if(index==kParamB##i){\
+            fB##i=value;\
+        }\
+        if(index==kParamC##i){\
+            fC##i=value;\
+        }\
+        if(index==kParamD##i){\
+            fD##i=value;\
         }
-        if(index==kParamB){
-            fB=value;
-        }
-        if(index==kParamC){
-            fC=value;
-        }
-        if(index==kParamD){
-            fD=value;
-        }
+
+        BIQUAD_LIST
+#undef X
+
+
         if(index==kParamDelay){
             fDelay=value;
         }
+
+
     }
 
     void activate() override

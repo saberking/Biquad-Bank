@@ -27,7 +27,14 @@ class ImGuiPluginUI : public UI
     ResizeHandle fResizeHandle;
     bool needsNormalise=false;
 public:
-    float fA,fB,fC,fD;
+#define X(i)\
+    float fA##i;\
+    float fB##i;\
+    float fC##i;\
+    float fD##i;
+
+    BIQUAD_LIST
+#undef X
     float fDelay;
     ImGuiPluginUI()
         : UI(DISTRHO_UI_DEFAULT_WIDTH,DISTRHO_UI_DEFAULT_HEIGHT),
@@ -44,7 +51,7 @@ public:
         ImGuiStyle& style = ImGui::GetStyle();
 
         // Set the global window background color
-        style.Colors[ImGuiCol_WindowBg] = ImVec4(63.0f / 255.0f, 72.0f / 255.0f, 77.0f / 255.0f, 0.12f);
+        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.8f, 72.0f / 255.0f, 77.0f / 255.0f, 0.12f);
 
     }
 
@@ -114,18 +121,23 @@ public:
 
 protected:
     void parameterChanged(uint32_t index, float value) override {
-        if(index==kParamA){
-            fA = value;
+#define X(i)\
+        if(index==kParamA##i){\
+            fA##i = value;\
+        }\
+        if(index==kParamB##i){\
+            fB##i=value;\
+        }\
+        if(index==kParamC##i){\
+            fC##i=value;\
+        }\
+        if(index==kParamD##i){\
+            fD##i=value;\
         }
-        if(index==kParamB){
-            fB=value;
-        }
-        if(index==kParamC){
-            fC=value;
-        }
-        if(index==kParamD){
-            fD=value;
-        }
+
+        BIQUAD_LIST
+#undef X
+
         if(index==kParamDelay){
             fDelay=value;
         }
