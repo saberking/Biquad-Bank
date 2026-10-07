@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.7...3.31)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Debug)
-set(NAME neural)
+set(NAME BiquadBank)
 
 if(NOT CMAKE_TOOLCHAIN_FILE AND DEFINED ENV{CMAKE_TOOLCHAIN_FILE})
     set(CMAKE_TOOLCHAIN_FILE "$ENV{CMAKE_TOOLCHAIN_FILE}" CACHE FILEPATH "Toolchain file")
@@ -66,7 +66,7 @@ target_include_directories(${NAME} PUBLIC dpf-widgets/opengl/DearImGui)
 add_compile_definitions(ImDrawIdx=unsigned\ int)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_link_libraries(neural-ui PRIVATE comctl32)
+    target_link_libraries(BiquadBank-ui PRIVATE comctl32)
 
 endif()
 # 1. Enable full optimizations, fast-math, and native SIMD instructions (AVX/AVX2/NEON)

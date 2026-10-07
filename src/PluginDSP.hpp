@@ -622,7 +622,7 @@ protected:
     */
     const char* getLabel() const noexcept override
     {
-        return "neural";
+        return "Biquad Bank";
     }
 
     /**
@@ -631,7 +631,7 @@ protected:
     */
     const char* getDescription() const override
     {
-        return "neural FX";
+        return "Biquad bank";
     }
 
     /**
@@ -667,7 +667,7 @@ protected:
     */
     int64_t getUniqueId() const noexcept override
     {
-        return d_cconst('n', 'e', 'u', 'r');
+        return d_cconst('B', 'q', 'B', 'k');
     }
 
     // ----------------------------------------------------------------------------------------------------------------

@@ -10,7 +10,7 @@
    This is used to identify your plugin before a Plugin instance can be created.
    @note This macro is required.
  */
-#define DISTRHO_PLUGIN_NAME "neural"
+#define DISTRHO_PLUGIN_NAME "Biquad Bank"
 
 /**
    Number of audio inputs the plugin has.
@@ -28,7 +28,7 @@
    The plugin URI when exporting in LV2 format.
    @note This macro is required.
  */
-#define DISTRHO_PLUGIN_URI "n:e:u:r"
+#define DISTRHO_PLUGIN_URI "B:q:B:k"
 
 /**
    Whether the plugin has a custom %UI.
@@ -331,4 +331,4 @@
    The plugin id when exporting in CLAP format, in reverse URI form.
    @note This macro is required when building CLAP plugins
 */
-#define DISTRHO_PLUGIN_CLAP_ID "saber.neural"
+#define DISTRHO_PLUGIN_CLAP_ID "saber.Biquad-Bank"
