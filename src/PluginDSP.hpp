@@ -37,7 +37,7 @@ class ImGuiPluginDSP : public Plugin
     float fFreq##i=0.f;\
     float fOutPan##i=0.f;\
     float fOutPOff##i=0.f;\
-    float fLvl##i=0.f;\
+    float fLvl##i=1.f/25.f;\
     float fPhs##i=0.f;
 
     BIQUAD_LIST
@@ -56,9 +56,8 @@ public:
     int nextUndoIndex=0;
     int undoCount=0,redoCount=0;
 
-    Eigen::Array<float, 25, MAX_DELAY+1>XVector, YVector;
-    Eigen::Array<float, 25, 1> rCosTheta, rSinTheta;
-    Eigen::Array<float, 25,1>outputVectorX, outputVectorY;
+    Eigen::Array<std::complex<float>,25,1>inL, inR, outL, outR, lambda,state[MAX_DELAY+1];
+
     int inputBufferIndex=0;
     ImGuiPluginDSP()
         : Plugin(kParamCount, 0, 1) // parameters, programs, states
@@ -77,8 +76,8 @@ public:
         std::srand(std::time(nullptr));
         std::random_device rd;
         gen.seed(rd()); // Seed this specific instance with a hardware random
-
-        XVector.row(0).setZero();
+        std::cout<<"finished constructor"<<std::endl;
+        calculateMatrix();
     }
 
     float findMaxAmplification(float* outPointer)
@@ -102,39 +101,7 @@ public:
     }
 
 
-    void normaliseMatrix(float *outPointer)
-    {
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>> W(outPointer);
 
-        Eigen::EigenSolver<Eigen::Matrix<float, OUT_SIZE-2, OUT_SIZE-2>> solver(W.block<OUT_SIZE-2, OUT_SIZE-2>(2, 2), false);
-        float maxMagnitude = 0.0f;
-        for (int i = 0; i < OUT_SIZE-2; ++i) {
-            maxMagnitude = std::max(maxMagnitude, std::abs(solver.eigenvalues()[i]));
-        }
-        std::cout<<"normalise"<<maxMagnitude<<std::endl;
-        //maxMagnitude+=0.001f;
-        float mult=max_eigenvalue/std::max(0.001f,maxMagnitude);
-
-        //float mult=1/findMaxAmplification(outPointer);
-
-        W *=mult;
-
-        // for (int r = 0; r < OUT_SIZE; ++r) {
-        //     for (int c = 0; c < OUT_SIZE; ++c) {
-        //         if (std::abs(W(r, c)) > MAX_EIGENVALUE) {
-        //             // Keep the original positive/negative sign but snap the value to 0.95f
-        //             W(r, c) = std::copysign(MAX_EIGENVALUE, W(r, c));
-        //         }
-        //     }
-        // }
-        // W.block<OUT_SIZE,CONSTANT_KNOB_COUNT>(0,OUT_SIZE).setZero();
-        W.block<2,OUT_SIZE>(0,0).rowwise().normalize();
-        //         W.block<OUT_SIZE,2>(0,0)*=0.95f;
-        // W.block<2,OUT_SIZE>(0,0)*=0.95f;
-
-
-        printEigen(outPointer);
-    }
 
     void printEigen(float *outPointer)
     {
@@ -150,122 +117,9 @@ public:
 
     }
 
-    bool normalise()
-    {
-        if(updateReady.load(std::memory_order_acquire))return true;
-        float *inPointer, *outPointer;
-        inPointer=currentBufferPointer.load(std::memory_order_acquire);
-        outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
-
-        for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
-        {
-            outPointer[i]=inPointer[i];//+(i%3?0.1:-0.1);
-        }
-        normaliseMatrix(outPointer);
-
-        updateReady.store(true,std::memory_order_release);
-        return false;
-
-    }
-    void randomise()
-    {
-        if(updateReady.load(std::memory_order_acquire))return;
-        float *inPointer, *outPointer;
-        inPointer=currentBufferPointer.load(std::memory_order_acquire);
-        outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
-
-        for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
-        {
-            outPointer[i]=inPointer[i];//+(i%3?0.1:-0.1);
-        }
 
 
 
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>> W(outPointer);
-
-        Eigen::MatrixXf X(OUT_SIZE, OUT_SIZE);
-        for (int r = 0; r < OUT_SIZE; ++r) {
-            for (int c = 0; c < OUT_SIZE; ++c) {
-                X(r, c) = d(gen); // Populating matrix with a true Gaussian profile
-            }
-        }
-
-        // A Householder QR acting on a Gaussian matrix produces a perfectly un-biased
-        // Haar-distributed random orthogonal matrix, eliminating Left/Right panning bias!
-        Eigen::HouseholderQR<Eigen::MatrixXf> qr(X);
-        Eigen::MatrixXf Q = qr.householderQ();
-
-        W.block<OUT_SIZE, OUT_SIZE>(0, 0) = (W.block<OUT_SIZE, OUT_SIZE>(0, 0) * Q * 0.1f).eval()
-                                            + (W.block<OUT_SIZE, OUT_SIZE>(0, 0) * 0.9f).eval();
-
-        // Fix noise injection using the same Gaussian distribution profile
-        Eigen::MatrixXf noise(OUT_SIZE, OUT_SIZE);
-        const float noiseAmount = 0.05f;
-        for (int r = 0; r < OUT_SIZE; ++r) {
-            for (int c = 0; c < OUT_SIZE; ++c) {
-                noise(r, c) = d(gen) * noiseAmount;
-            }
-        }
-    W.block<OUT_SIZE, OUT_SIZE>(0, 0) += noise;
-        normaliseMatrix(outPointer);
-
-        updateReady.store(true,std::memory_order_release);
-
-    }
-    void delay()
-    {
-        if(updateReady.load(std::memory_order_acquire)) return;
-        float *inPointer, *outPointer;
-        inPointer=currentBufferPointer.load(std::memory_order_acquire);
-        outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
-
-        for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
-        {
-            outPointer[i]=inPointer[i];//+(i%3?0.1:-0.1);
-        }
-
-
-        // outPointer[OUT_SIZE-2]=1.f;
-        // outPointer[(OUT_SIZE)+OUT_SIZE-1]=1.f;
-        // for(int i =2;i<OUT_SIZE;i++)
-        // {
-        //     outPointer[(OUT_SIZE)*i+i-2]=1.f;
-
-        // }
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>> W(outPointer);
-
-
-        auto circularSequence = (Eigen::VectorXi::LinSpaced(OUT_SIZE, -2, OUT_SIZE - 3).array() + OUT_SIZE)
-                                    .unaryExpr([](int val) { return val % OUT_SIZE; });
-
-        // 2. COMPILER-SAFE REWRITE: Create a temporary copy of the old matrix state
-        // This completely stops memory aliasing bugs without needing Eigen::all!
-        Eigen::Matrix<float, OUT_SIZE, OUT_SIZE , Eigen::RowMajor> tempW = W;
-
-        // 3. Remap the rows sequentially
-        for (int i = 0; i < OUT_SIZE; ++i) {
-            int targetRowIndex = circularSequence[i];
-            W.row(i) += tempW.row(targetRowIndex)*0.2f; // Cleanly assigns the whole row
-        }
-
-        normaliseMatrix(outPointer);
-
-        updateReady.store(true,std::memory_order_release);
-
-
-
-    }
-
-
-
-    void printMatrix()
-    {
-        for(int i=0;i<OUT_SIZE;i++){
-            for(int j=0;j<OUT_SIZE;j++)        std::cout<<currentBufferPointer.load(std::memory_order_acquire)[i*(OUT_SIZE)+j]<<" ";
-            std::cout<<std::endl;
-        }
-        printEigen(currentBufferPointer.load(std::memory_order_acquire));
-    }
     ~ImGuiPluginDSP(){
         for(int i=0;i<MAX_UNDO_DEPTH;i++)
         {
@@ -319,33 +173,47 @@ protected:
     }
     void calculateMatrix()
     {
+        std::cout<<"calculate"<<std::endl;
+
+        float panAngle;
+//pan: zero is 45 degrees, -M_PI/2 is zero degrees, M_PI/2 is 90 degrees
+//left magnitude is cos(pan), right is sin(pan) (0)
+//phase offset:0 to M_PI (0)
+//freq: theta goes 0 t M_PI (0), freq from 0 to 24k
+//feed: 0 to 1 (0)
+//lvl: 0 to 1 (0)
+//phase: 0 to M_PI
+
 #define X(i) \
-        outputVectorX(i)=std::cos(fD##i)*fC##i;\
-        outputVectorY(i)=std::sin(fD##i)*fC##i;\
         \
-        rCosTheta(i)=std::cos(fB##i)*fA##i;\
-        rSinTheta(i)=std::sin(fB##i)*fA##i;
+        panAngle=M_PI/4.f+fInPan##i/2.f;\
+        inL(i)=std::polar<float>(std::cos(panAngle),-fInPOff##i/2.f);\
+        inR(i)=std::polar<float>(std::sin(panAngle),fInPOff##i/2.f);\
+        lambda(i)=std::polar<float>(fFeed##i,fFreq##i*M_PI/24000.f);\
+        panAngle=M_PI/4.f+fOutPan##i/2.f;\
+        outL(i)=std::polar<float>(std::cos(panAngle),-fOutPOff##i/2);\
+        outR(i)=std::polar<float>(std::sin(panAngle),fOutPOff##i/2);\
+        outL(i)*=std::polar<float>(fLvl##i,fPhs##i);\
+        outR(i)*=std::polar<float>(fLvl##i,fPhs##i);
 
         BIQUAD_LIST
 #undef X
     }
-
+    int count=0;
     void run ( const float **inputs, float **outputs, uint32_t frames,
              const MidiEvent *midiEvents, // MIDI pointer
              uint32_t midiEventCount      // Number of MIDI events in block
              ) override
     {
+        if(!(count++%1000))
+        {
+            std::cout<<"run"<<std::endl;
+        }
         int curEventIndex =0;
 
         ActivationFunctionType activationFunction=activation.load(std::memory_order_release);
 
-        // if(updateReady.load(std::memory_order_acquire))
-        // {
-        //     float *newPointer=(currentBufferPointer.load(std::memory_order_acquire)==weightBuffer1?weightBuffer2:weightBuffer1);
-        //     currentBufferPointer.store(newPointer,std::memory_order_release);
-        //     updateReady.store(false,std::memory_order_release);
 
-        // }
         float delay=std::max(0.f,std::min(fDelay*note,(float)MAX_DELAY));
         float currentLoopDelay=lastDelay;
         float lastLoopDelay=currentLoopDelay;
@@ -366,43 +234,17 @@ protected:
             float temp2=(temp*(float)(sample+1))/(float)frames;
 
             currentLoopDelay=lastDelay+temp2;
-            int newIndex=(inputBufferIndex+lastLoopDelay-currentLoopDelay+MAX_DELAY+1)%(MAX_DELAY+1);
-            if(newIndex<0)std::cout<<"ERRORR!!!!!"<<"ERRRORRRR!!!!!!"<<std::endl<<"current "<<
-                          currentLoopDelay<<" lastD "<<lastDelay<<"   delay "<<delay<<"    sammple "<<sample<<"    frames"<<frames<<
-                    "    temp"<<temp<<"    temp2 "<<temp2<<  std::endl;
-            else inputBufferIndex=newIndex;
+
+            int newIndex=(inputBufferIndex+1)%(MAX_DELAY+1);
+            state[newIndex]=state[inputBufferIndex];
+            inputBufferIndex=newIndex;
+            state[inputBufferIndex]+=inL*inputs[0][sample]+inR*inputs[1][sample];
+            state[inputBufferIndex]*=lambda;
+            outputs[0][sample] = 2.f*std::real(outL.matrix().dot(state[inputBufferIndex].matrix()));
+            outputs[1][sample] = 2.f*std::real(outR.matrix().dot(state[inputBufferIndex].matrix()));
+
+
             lastLoopDelay=currentLoopDelay;
-
-
-
-            XVector.column(inputBufferIndex)+=inputs[0];
-
-
-
-
-
-
-            if(activationFunction==activationFunctionClip)
-            {
-                y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
-
-            }
-            if(activationFunction==activationFunctionTanh)
-            {
-                float* rawY = y.data();
-                for (int r = 0; r < OUT_SIZE; ++r) {
-                    rawY[r] = fastTanh(rawY[r]);
-                }
-            }
-
-
-
-            outputs[0][sample]=clip(y[0],2);outputs[1][sample]=clip(y[1],2);
-
-            inputBufferIndex=(inputBufferIndex+1)%(MAX_DELAY+1);
-            Eigen::Map<Eigen::Vector<float, OUT_SIZE>> x2(inputBuffer[(inputBufferIndex+currentLoopDelay)%(MAX_DELAY+1)]);
-            x2.head<OUT_SIZE>() = y.eval();
-
 
         }
         lastDelay=lastLoopDelay;
@@ -418,49 +260,49 @@ protected:
 // Handle standard biquad parameter generations
 #define X(i) \
         if(index == kParamInPan##i) { \
-                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.ranges = ParameterRanges(0.f, -M_PI/2, M_PI/2); \
                 parameter.name = "Biquad " #i " InPan"; \
                 parameter.symbol = "biquad_" #i "_in_pan"; \
                 return; \
         } \
             if(index == kParamInPOff##i) { \
-                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.ranges = ParameterRanges(0.f, 0.f, M_PI); \
                 parameter.name = "Biquad " #i " InPOff"; \
                 parameter.symbol = "biquad_" #i "_in_p_off"; \
                 return; \
         } \
             if(index == kParamFeed##i) { \
-                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.ranges = ParameterRanges(0.f, 0.f, 1.f); \
                 parameter.name = "Biquad " #i " Feed"; \
                 parameter.symbol = "biquad_" #i "_feed"; \
                 return; \
         } \
             if(index == kParamFreq##i) { \
-                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.ranges = ParameterRanges(0.f, 0.f, 24000.f); \
                 parameter.name = "Biquad " #i " Freq"; \
                 parameter.symbol = "biquad_" #i "_freq"; \
                 return; \
         }\
         if(index == kParamOutPan##i) { \
-                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+        parameter.ranges = ParameterRanges(0.f, -M_PI/2, M_PI/2); \
                 parameter.name = "Biquad " #i " OutPan"; \
                 parameter.symbol = "biquad_" #i "_out_pan"; \
                 return; \
         } \
             if(index == kParamOutPOff##i) { \
-                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+        parameter.ranges = ParameterRanges(0.f, 0.f, M_PI); \
                 parameter.name = "Biquad " #i " OutPOff"; \
                 parameter.symbol = "biquad_" #i "_out_p_off"; \
                 return; \
         } \
             if(index == kParamLvl##i) { \
-                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.ranges = ParameterRanges(1.f/25.f, 0.f, 1.f); \
                 parameter.name = "Biquad " #i " Lvl"; \
                 parameter.symbol = "biquad_" #i "_lvl"; \
                 return; \
         } \
             if(index == kParamPhs##i) { \
-                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.ranges = ParameterRanges(0.f, 0.f, M_PI); \
                 parameter.name = "Biquad " #i " Phs"; \
                 parameter.symbol = "biquad_" #i "_phs"; \
                 return; \
@@ -469,7 +311,7 @@ protected:
 #undef X
 
             // Handle Delay
-            if(index == kParamFreqelay) {
+            if(index == kParamDelay) {
             parameter.ranges = ParameterRanges(0.f, 0.f, MAX_DELAY);
             parameter.name = "Delay";
             parameter.symbol = "delay";
@@ -507,7 +349,7 @@ protected:
         BIQUAD_LIST
 #undef X
 
-        if(index==kParamFreqelay){
+        if(index==kParamDelay){
             return fDelay;
         }
     }
@@ -545,11 +387,11 @@ protected:
 #undef X
 
 
-        if(index==kParamFreqelay){
+        if(index==kParamDelay){
             fDelay=value;
         }
 
-
+        calculateMatrix();
     }
 
     void activate() override
@@ -565,75 +407,76 @@ protected:
     }
 
     String getState(const char* key) const override {
-        if (!strcmp(key,"sampleData"))
-        {
+        // if (!strcmp(key,"sampleData"))
+        // {
 
-            size_t maxEigenSize=sizeof(float);
-            size_t activationSize=sizeof(ActivationFunctionType);
-            size_t matrixSize=sizeof(float)*(OUT_SIZE)*OUT_SIZE;
+        //     size_t maxEigenSize=sizeof(float);
+        //     size_t activationSize=sizeof(ActivationFunctionType);
+        //     size_t matrixSize=sizeof(float)*(OUT_SIZE)*OUT_SIZE;
 
-            size_t totalBytes = maxEigenSize+activationSize+matrixSize;
+        //     size_t totalBytes = maxEigenSize+activationSize+matrixSize;
 
-            std::vector<uint8_t> rawBinaryBuffer(totalBytes);
-            auto *incrementalPointer=rawBinaryBuffer.data();
+        //     std::vector<uint8_t> rawBinaryBuffer(totalBytes);
+        //     auto *incrementalPointer=rawBinaryBuffer.data();
 
-            auto *maxEigenPointer=reinterpret_cast<float*>(incrementalPointer);
-            *maxEigenPointer=max_eigenvalue;
-            incrementalPointer+=maxEigenSize;
+        //     auto *maxEigenPointer=reinterpret_cast<float*>(incrementalPointer);
+        //     *maxEigenPointer=max_eigenvalue;
+        //     incrementalPointer+=maxEigenSize;
 
-            auto* activationPointer=reinterpret_cast<ActivationFunctionType*>(incrementalPointer);
-            *activationPointer=activation.load(std::memory_order_relaxed);
-            incrementalPointer+=activationSize;
+        //     auto* activationPointer=reinterpret_cast<ActivationFunctionType*>(incrementalPointer);
+        //     *activationPointer=activation.load(std::memory_order_relaxed);
+        //     incrementalPointer+=activationSize;
 
-            auto *matrixPtr=reinterpret_cast<float*>(incrementalPointer);
-            auto *buffer=currentBufferPointer.load(std::memory_order_relaxed);
-            for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
-            {
-                matrixPtr[i]=buffer[i];
-            }
+        //     auto *matrixPtr=reinterpret_cast<float*>(incrementalPointer);
+        //     auto *buffer=currentBufferPointer.load(std::memory_order_relaxed);
+        //     for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
+        //     {
+        //         matrixPtr[i]=buffer[i];
+        //     }
 
-            std::string encodedText = base64_encode(rawBinaryBuffer.data(), rawBinaryBuffer.size());
-            return String(encodedText.c_str());
-        }else return String("");
+        //     std::string encodedText = base64_encode(rawBinaryBuffer.data(), rawBinaryBuffer.size());
+        //     return String(encodedText.c_str());
+        // }else
+            return String("");
 
     }
 
     void setState(const char *key, const char * value){
-        if(!strcmp("sampleData", key))
-        {
-            if (strlen(value) == 0 ) {
-                return;
-            }
+        // if(!strcmp("sampleData", key))
+        // {
+        //     if (strlen(value) == 0 ) {
+        //         return;
+        //     }
 
 
-            std::string decodedBytes = base64_decode(std::string(value));
+        //     std::string decodedBytes = base64_decode(std::string(value));
 
-            const uint8_t* incrementalPointer = reinterpret_cast<const uint8_t*>(decodedBytes.data());
+        //     const uint8_t* incrementalPointer = reinterpret_cast<const uint8_t*>(decodedBytes.data());
 
-            size_t maxEigenSize=sizeof(float);
-            size_t activationSize=sizeof(ActivationFunctionType);
-            size_t matrixSize=sizeof(float)*(OUT_SIZE)*OUT_SIZE;
+        //     size_t maxEigenSize=sizeof(float);
+        //     size_t activationSize=sizeof(ActivationFunctionType);
+        //     size_t matrixSize=sizeof(float)*(OUT_SIZE)*OUT_SIZE;
 
 
-            auto *maxEigenPointer=reinterpret_cast<const float*>(incrementalPointer);
-            max_eigenvalue=*maxEigenPointer;
-            incrementalPointer+=maxEigenSize;
+        //     auto *maxEigenPointer=reinterpret_cast<const float*>(incrementalPointer);
+        //     max_eigenvalue=*maxEigenPointer;
+        //     incrementalPointer+=maxEigenSize;
 
-            auto* activationPointer=reinterpret_cast<const ActivationFunctionType*>(incrementalPointer);
-            activation.store(*activationPointer,std::memory_order_relaxed);
-            incrementalPointer+=activationSize;
+        //     auto* activationPointer=reinterpret_cast<const ActivationFunctionType*>(incrementalPointer);
+        //     activation.store(*activationPointer,std::memory_order_relaxed);
+        //     incrementalPointer+=activationSize;
 
-            auto *matrixPtr=reinterpret_cast<const float*>(incrementalPointer);
-            updateReady.store(false,std::memory_order_release);
-            auto *buffer=currentBufferPointer.load(std::memory_order_acquire);
-            float *outPointer=(buffer==weightBuffer1?weightBuffer2:weightBuffer1);
-            for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
-            {
-                outPointer[i]=matrixPtr[i];
-            }
-            currentBufferPointer.store(outPointer,std::memory_order_release);
+        //     auto *matrixPtr=reinterpret_cast<const float*>(incrementalPointer);
+        //     updateReady.store(false,std::memory_order_release);
+        //     auto *buffer=currentBufferPointer.load(std::memory_order_acquire);
+        //     float *outPointer=(buffer==weightBuffer1?weightBuffer2:weightBuffer1);
+        //     for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
+        //     {
+        //         outPointer[i]=matrixPtr[i];
+        //     }
+        //     currentBufferPointer.store(outPointer,std::memory_order_release);
 
-        }
+        // }
     }
     /**
       Get the plugin label.@n

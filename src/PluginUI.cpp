@@ -56,6 +56,7 @@ public:
 
         // Set the global window background color
         style.Colors[ImGuiCol_WindowBg] = ImVec4(0.8f, 72.0f / 255.0f, 77.0f / 255.0f, 0.12f);
+        std::cout<<"finished ui cosntructor"<<std::endl;
 
     }
 
@@ -109,7 +110,7 @@ public:
             if(!clapPointer)return;
             auto* hostState = reinterpret_cast<const clap_host_state_t*>(clapPointer->get_extension(clapPointer, CLAP_EXT_STATE));
             if (hostState != nullptr && hostState->mark_dirty != nullptr) {
-                setParameterValue(kParamFreqelay,(float)std::max(0,std::min(MAX_DELAY,(int)fDelay)));
+                setParameterValue(kParamDelay,(float)std::max(0,std::min(MAX_DELAY,(int)fDelay)));
 
 
                 hostState->mark_dirty(clapPointer);
@@ -154,7 +155,7 @@ protected:
         BIQUAD_LIST
 #undef X
 
-        if(index==kParamFreqelay){
+        if(index==kParamDelay){
             fDelay=value;
         }
         repaint();
@@ -163,7 +164,7 @@ protected:
 
 
     void onImGuiDisplay() override {
-
+        std::cout<<"onimguyidisplya"<<std::endl;
 
         const float height = getHeight();
         const float width = getWidth();
@@ -227,13 +228,13 @@ protected:
             if(ImGui::SliderFloat("Delay##Delayslider",&fDelay,0.f,(float)MAX_DELAY))
             {
                 if(ImGui::IsItemActivated())
-                    editParameter(kParamFreqelay,true);
-                setParameterValue(kParamFreqelay,(float)std::max(0,std::min(MAX_DELAY,(int)fDelay)));
+                    editParameter(kParamDelay,true);
+                setParameterValue(kParamDelay,(float)std::max(0,std::min(MAX_DELAY,(int)fDelay)));
             }
 
             if (ImGui::IsItemDeactivated())
             {
-                editParameter(kParamFreqelay, false);
+                editParameter(kParamDelay, false);
             }
         }
         //if(!ImGui::IsMouseDown(ImGuiMouseButton_Left)) endDrag();
