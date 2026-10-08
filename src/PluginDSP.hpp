@@ -101,7 +101,15 @@ public:
     }
 
 
+    void randomise()
+    {
+        std::complex<float> one=std::complex(1.f,0.f);
+        inL(0)=one;inR(0)=one;
+        lambda(0)=std::complex(0.9f,0.08f);
+        outL(0)=one;outR(0)=one;
 
+
+    }
 
     void printEigen(float *outPointer)
     {
@@ -205,10 +213,10 @@ protected:
              uint32_t midiEventCount      // Number of MIDI events in block
              ) override
     {
-        if(!(count++%1000))
-        {
-            std::cout<<"run"<<std::endl;
-        }
+        // if(!(count++%1000))
+        // {
+        //     std::cout<<"run"<<std::endl;
+        // }
         int curEventIndex =0;
 
         ActivationFunctionType activationFunction=activation.load(std::memory_order_release);
@@ -240,8 +248,8 @@ protected:
             inputBufferIndex=newIndex;
             state[inputBufferIndex]+=inL*inputs[0][sample]+inR*inputs[1][sample];
             state[inputBufferIndex]*=lambda;
-            outputs[0][sample] = 2.f*std::real(outL.matrix().dot(state[inputBufferIndex].matrix()));
-            outputs[1][sample] = 2.f*std::real(outR.matrix().dot(state[inputBufferIndex].matrix()));
+            outputs[0][sample] = clip(2.f*std::real(outL.matrix().dot(state[inputBufferIndex].matrix())));
+            outputs[1][sample] = clip(2.f*std::real(outR.matrix().dot(state[inputBufferIndex].matrix())));
 
 
             lastLoopDelay=currentLoopDelay;
@@ -257,7 +265,6 @@ protected:
     {
         parameter.hints = kParameterIsAutomatable;
 
-// Handle standard biquad parameter generations
 #define X(i) \
         if(index == kParamInPan##i) { \
                 parameter.ranges = ParameterRanges(0.f, -M_PI/2, M_PI/2); \
@@ -312,7 +319,7 @@ protected:
 
             // Handle Delay
             if(index == kParamDelay) {
-            parameter.ranges = ParameterRanges(0.f, 0.f, MAX_DELAY);
+            parameter.ranges = ParameterRanges(0.f, 0.f, (float)MAX_DELAY);
             parameter.name = "Delay";
             parameter.symbol = "delay";
         }
@@ -340,11 +347,11 @@ protected:
             if(index==kParamOutPOff##i){\
                 return fOutPOff##i;\
         }\
-            if(index==kParamFeed##i){\
-                return fFeed##i;\
+            if(index==kParamLvl##i){\
+                return fLvl##i;\
         }\
-            if(index==kParamFreq##i){\
-                return fFreq##i;\
+            if(index==kParamPhs##i){\
+                return fPhs##i;\
         }
         BIQUAD_LIST
 #undef X
@@ -352,6 +359,7 @@ protected:
         if(index==kParamDelay){
             return fDelay;
         }
+        std::cout<<"ERRORRRRRR   "<<index<<std::endl;
     }
 
 
@@ -390,7 +398,7 @@ protected:
         if(index==kParamDelay){
             fDelay=value;
         }
-
+        std::cout<<"all set"<<std::endl;
         calculateMatrix();
     }
 

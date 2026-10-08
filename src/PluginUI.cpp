@@ -161,10 +161,14 @@ protected:
         repaint();
     }
 
+    void displayKnob()
+    {
+
+    }
+
 
 
     void onImGuiDisplay() override {
-        std::cout<<"onimguyidisplya"<<std::endl;
 
         const float height = getHeight();
         const float width = getWidth();
@@ -175,10 +179,10 @@ protected:
 
         if (ImGui::Begin("Biquad Bank", nullptr, ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoTitleBar))
         {
-            // if(ImGui::Button("Randomise"))
-            // {
-            //     getPluginDPSPointer()->randomise();
-            // }
+            if(ImGui::Button("Randomise"))
+            {
+                getPluginDPSPointer()->randomise();
+            }
             // if(ImGui::Button("Delay##delaybutton"))
             // {
             //     getPluginDPSPointer()->delay();
