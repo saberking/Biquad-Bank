@@ -105,9 +105,24 @@ public:
     {
         std::complex<float> one=std::complex(1.f,0.f);
         inL(0)=one;inR(0)=one;
-        lambda(0)=std::complex(0.9f,0.08f);
+        lambda(0)=std::complex(0.5f,0.1f);
         outL(0)=one;outR(0)=one;
+        Eigen::Array<float, 25, 1> matrix;
+        matrix.setRandom();
+        float noiseAmount=0.1f;
+        inL+=matrix*noiseAmount;
+        matrix.setRandom();
 
+        outL+=matrix*noiseAmount;
+        matrix.setRandom();
+
+        inR+=matrix*noiseAmount;
+        matrix.setRandom();
+
+        outR+=matrix*noiseAmount;
+        matrix.setRandom();
+
+        lambda+=matrix*noiseAmount;
 
     }
 
@@ -248,6 +263,8 @@ protected:
             inputBufferIndex=newIndex;
             state[inputBufferIndex]+=inL*inputs[0][sample]+inR*inputs[1][sample];
             state[inputBufferIndex]*=lambda;
+            // state[inputBufferIndex].real() = state[inputBufferIndex].real().cwiseMax(-1.0f).cwiseMin(1.0f);
+            // state[inputBufferIndex].imag() = state[inputBufferIndex].imag().cwiseMax(-1.0f).cwiseMin(1.0f);
             outputs[0][sample] = clip(2.f*std::real(outL.matrix().dot(state[inputBufferIndex].matrix())));
             outputs[1][sample] = clip(2.f*std::real(outR.matrix().dot(state[inputBufferIndex].matrix())));
 
