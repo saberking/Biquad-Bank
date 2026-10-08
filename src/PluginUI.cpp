@@ -180,11 +180,8 @@ protected:
             //     needsNormalise=getPluginDPSPointer()->normalise();
             // }
 
-            if (ImGui::IsItemDeactivated())
-            {
-                editParameter(kParamDelay, false);
-            }
-            if(needsNormalise) needsNormalise=getPluginDPSPointer()->normalise();
+
+            // if(needsNormalise) needsNormalise=getPluginDPSPointer()->normalise();
 
 
             ActivationFunctionType type=getPluginDPSPointer()->activation.load(std::memory_order_relaxed);

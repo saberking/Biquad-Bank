@@ -26,7 +26,7 @@ static const char* activationFunctionNames[]={
     };
 
 #define OUT_SIZE 30
-#define STRIDE (OUT_SIZE+CONSTANT_KNOB_COUNT)
+#define STRIDE (OUT_SIZE)
 #define MAX_DELAY 1000
 class ImGuiPluginDSP : public Plugin
 {
@@ -77,14 +77,14 @@ public:
             undoItems[i]=NULL;
         }
 
-        for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+        for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
         {
             weightBuffer1[i]=0.f;
         }
 
         for(int i=0;i<MAX_DELAY+1;i++)
         {
-            for(int j=0;j<OUT_SIZE+CONSTANT_KNOB_COUNT;j++)
+            for(int j=0;j<OUT_SIZE;j++)
             {
                inputBuffer[i][j]=0.f;
 
@@ -94,14 +94,14 @@ public:
         std::random_device rd;
         gen.seed(rd()); // Seed this specific instance with a hardware random
 
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(weightBuffer1);
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>> W(weightBuffer1);
         W.diagonal().setConstant(1.f);
         currentBufferPointer.store(weightBuffer1,std::memory_order_release);
     }
 
     float findMaxAmplification(float* outPointer)
     {
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>> W(outPointer);
 
         // Isolate the square audio feedback block (e.g., 24x24)
         Eigen::Matrix<float, OUT_SIZE, OUT_SIZE> audioBlock = W.block<OUT_SIZE, OUT_SIZE>(0, 0);
@@ -122,7 +122,7 @@ public:
 
     void normaliseMatrix(float *outPointer)
     {
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>> W(outPointer);
 
         Eigen::EigenSolver<Eigen::Matrix<float, OUT_SIZE-2, OUT_SIZE-2>> solver(W.block<OUT_SIZE-2, OUT_SIZE-2>(2, 2), false);
         float maxMagnitude = 0.0f;
@@ -145,7 +145,7 @@ public:
         //         }
         //     }
         // }
-        W.block<OUT_SIZE,CONSTANT_KNOB_COUNT>(0,OUT_SIZE).setZero();
+        // W.block<OUT_SIZE,CONSTANT_KNOB_COUNT>(0,OUT_SIZE).setZero();
         W.block<2,OUT_SIZE>(0,0).rowwise().normalize();
         //         W.block<OUT_SIZE,2>(0,0)*=0.95f;
         // W.block<2,OUT_SIZE>(0,0)*=0.95f;
@@ -156,7 +156,7 @@ public:
 
     void printEigen(float *outPointer)
     {
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>> W(outPointer);
 
         Eigen::EigenSolver<Eigen::Matrix<float, OUT_SIZE-2, OUT_SIZE-2>> solver(W.block<OUT_SIZE-2, OUT_SIZE-2>(2, 2), false);
         float maxMagnitude = 0.0f;
@@ -175,7 +175,7 @@ public:
         inPointer=currentBufferPointer.load(std::memory_order_acquire);
         outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
 
-        for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+        for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
         {
             outPointer[i]=inPointer[i];//+(i%3?0.1:-0.1);
         }
@@ -192,14 +192,14 @@ public:
         inPointer=currentBufferPointer.load(std::memory_order_acquire);
         outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
 
-        for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+        for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
         {
             outPointer[i]=inPointer[i];//+(i%3?0.1:-0.1);
         }
 
 
 
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>> W(outPointer);
 
         Eigen::MatrixXf X(OUT_SIZE, OUT_SIZE);
         for (int r = 0; r < OUT_SIZE; ++r) {
@@ -237,20 +237,20 @@ public:
         inPointer=currentBufferPointer.load(std::memory_order_acquire);
         outPointer=(inPointer==weightBuffer1?weightBuffer2:weightBuffer1);
 
-        for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+        for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
         {
             outPointer[i]=inPointer[i];//+(i%3?0.1:-0.1);
         }
 
 
         // outPointer[OUT_SIZE-2]=1.f;
-        // outPointer[(OUT_SIZE+CONSTANT_KNOB_COUNT)+OUT_SIZE-1]=1.f;
+        // outPointer[(OUT_SIZE)+OUT_SIZE-1]=1.f;
         // for(int i =2;i<OUT_SIZE;i++)
         // {
-        //     outPointer[(OUT_SIZE+CONSTANT_KNOB_COUNT)*i+i-2]=1.f;
+        //     outPointer[(OUT_SIZE)*i+i-2]=1.f;
 
         // }
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>> W(outPointer);
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>> W(outPointer);
 
 
         auto circularSequence = (Eigen::VectorXi::LinSpaced(OUT_SIZE, -2, OUT_SIZE - 3).array() + OUT_SIZE)
@@ -258,7 +258,7 @@ public:
 
         // 2. COMPILER-SAFE REWRITE: Create a temporary copy of the old matrix state
         // This completely stops memory aliasing bugs without needing Eigen::all!
-        Eigen::Matrix<float, OUT_SIZE, OUT_SIZE + CONSTANT_KNOB_COUNT, Eigen::RowMajor> tempW = W;
+        Eigen::Matrix<float, OUT_SIZE, OUT_SIZE , Eigen::RowMajor> tempW = W;
 
         // 3. Remap the rows sequentially
         for (int i = 0; i < OUT_SIZE; ++i) {
@@ -279,7 +279,7 @@ public:
     void printMatrix()
     {
         for(int i=0;i<OUT_SIZE;i++){
-            for(int j=0;j<OUT_SIZE+CONSTANT_KNOB_COUNT;j++)        std::cout<<currentBufferPointer.load(std::memory_order_acquire)[i*(OUT_SIZE+CONSTANT_KNOB_COUNT)+j]<<" ";
+            for(int j=0;j<OUT_SIZE;j++)        std::cout<<currentBufferPointer.load(std::memory_order_acquire)[i*(OUT_SIZE)+j]<<" ";
             std::cout<<std::endl;
         }
         printEigen(currentBufferPointer.load(std::memory_order_acquire));
@@ -356,10 +356,10 @@ protected:
         int delay=(int)std::max(0.f,std::min(fDelay*note,(float)MAX_DELAY));
         int currentLoopDelay=lastDelay;
         int lastLoopDelay=currentLoopDelay;
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT, Eigen::RowMajor>, Eigen::Aligned64>
+        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>, Eigen::Aligned64>
             W(currentBufferPointer.load(std::memory_order_acquire));
 
-        // Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE+CONSTANT_KNOB_COUNT,
+        // Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE,
         //                          Eigen::RowMajor>> W(currentBufferPointer.load(std::memory_order_relaxed));
 
         Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
@@ -385,7 +385,7 @@ protected:
                     "    temp"<<temp<<"    temp2 "<<temp2<<  std::endl;
             else inputBufferIndex=newIndex;
             lastLoopDelay=currentLoopDelay;
-            Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x(inputBuffer[inputBufferIndex]);
+            Eigen::Map<Eigen::Vector<float, OUT_SIZE>> x(inputBuffer[inputBufferIndex]);
             // Append your 4 special parameters to the remaining 4 slots of x
             // x[OUT_SIZE] = fA;
             // x[OUT_SIZE+1] = fB;
@@ -437,7 +437,7 @@ protected:
             outputs[0][sample]=clip(y[0],2);outputs[1][sample]=clip(y[1],2);
 
             inputBufferIndex=(inputBufferIndex+1)%(MAX_DELAY+1);
-            Eigen::Map<Eigen::Vector<float, OUT_SIZE+CONSTANT_KNOB_COUNT>> x2(inputBuffer[(inputBufferIndex+currentLoopDelay)%(MAX_DELAY+1)]);
+            Eigen::Map<Eigen::Vector<float, OUT_SIZE>> x2(inputBuffer[(inputBufferIndex+currentLoopDelay)%(MAX_DELAY+1)]);
             x2.head<OUT_SIZE>() = y.eval();
 
 
@@ -563,7 +563,7 @@ protected:
 
             size_t maxEigenSize=sizeof(float);
             size_t activationSize=sizeof(ActivationFunctionType);
-            size_t matrixSize=sizeof(float)*(OUT_SIZE+CONSTANT_KNOB_COUNT)*OUT_SIZE;
+            size_t matrixSize=sizeof(float)*(OUT_SIZE)*OUT_SIZE;
 
             size_t totalBytes = maxEigenSize+activationSize+matrixSize;
 
@@ -580,7 +580,7 @@ protected:
 
             auto *matrixPtr=reinterpret_cast<float*>(incrementalPointer);
             auto *buffer=currentBufferPointer.load(std::memory_order_relaxed);
-            for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+            for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
             {
                 matrixPtr[i]=buffer[i];
             }
@@ -605,7 +605,7 @@ protected:
 
             size_t maxEigenSize=sizeof(float);
             size_t activationSize=sizeof(ActivationFunctionType);
-            size_t matrixSize=sizeof(float)*(OUT_SIZE+CONSTANT_KNOB_COUNT)*OUT_SIZE;
+            size_t matrixSize=sizeof(float)*(OUT_SIZE)*OUT_SIZE;
 
 
             auto *maxEigenPointer=reinterpret_cast<const float*>(incrementalPointer);
@@ -620,7 +620,7 @@ protected:
             updateReady.store(false,std::memory_order_release);
             auto *buffer=currentBufferPointer.load(std::memory_order_acquire);
             float *outPointer=(buffer==weightBuffer1?weightBuffer2:weightBuffer1);
-            for(int i=0;i<OUT_SIZE*(OUT_SIZE+CONSTANT_KNOB_COUNT);i++)
+            for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
             {
                 outPointer[i]=matrixPtr[i];
             }
