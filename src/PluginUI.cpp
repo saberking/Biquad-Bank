@@ -28,10 +28,14 @@ class ImGuiPluginUI : public UI
     bool needsNormalise=false;
 public:
 #define X(i)\
-    float fA##i;\
-    float fB##i;\
-    float fC##i;\
-    float fD##i;
+    float fInPan##i;\
+    float fInPOff##i;\
+    float fFeed##i;\
+    float fFreq##i;\
+    float fOutPan##i;\
+    float fOutPOff##i;\
+    float fLvl##i;\
+    float fPhs##i;
 
     BIQUAD_LIST
 #undef X
@@ -87,7 +91,7 @@ public:
                 return (binaryPath.compare(binaryPath.length() - target.length(), target.length(), target) == 0);
             }
         }
-        return false; // 🔵 Fallback (VST3, etc.)
+        return false; // 🔵 fallback (VST3, etc.)
     }
 
     int getPluginFormat()
@@ -105,7 +109,7 @@ public:
             if(!clapPointer)return;
             auto* hostState = reinterpret_cast<const clap_host_state_t*>(clapPointer->get_extension(clapPointer, CLAP_EXT_STATE));
             if (hostState != nullptr && hostState->mark_dirty != nullptr) {
-                setParameterValue(kParamDelay,(float)std::max(0,std::min(MAX_DELAY,(int)fDelay)));
+                setParameterValue(kParamFreqelay,(float)std::max(0,std::min(MAX_DELAY,(int)fDelay)));
 
 
                 hostState->mark_dirty(clapPointer);
@@ -122,23 +126,35 @@ public:
 protected:
     void parameterChanged(uint32_t index, float value) override {
 #define X(i)\
-        if(index==kParamA##i){\
-            fA##i = value;\
+        if(index==kParamInPan##i){\
+            fInPan##i = value;\
         }\
-        if(index==kParamB##i){\
-            fB##i=value;\
+        if(index==kParamInPOff##i){\
+            fInPOff##i=value;\
         }\
-        if(index==kParamC##i){\
-            fC##i=value;\
+        if(index==kParamFeed##i){\
+            fFeed##i=value;\
         }\
-        if(index==kParamD##i){\
-            fD##i=value;\
+        if(index==kParamFreq##i){\
+            fFreq##i=value;\
+        }\
+        if(index==kParamOutPan##i){\
+            fOutPan##i=value;\
+        }\
+        if(index==kParamOutPOff##i){\
+            fOutPOff##i=value;\
+        }\
+        if(index==kParamLvl##i){\
+            fLvl##i=value;\
+        }\
+        if(index==kParamPhs##i){\
+            fPhs##i=value;\
         }
 
         BIQUAD_LIST
 #undef X
 
-        if(index==kParamDelay){
+        if(index==kParamFreqelay){
             fDelay=value;
         }
         repaint();
@@ -211,13 +227,13 @@ protected:
             if(ImGui::SliderFloat("Delay##Delayslider",&fDelay,0.f,(float)MAX_DELAY))
             {
                 if(ImGui::IsItemActivated())
-                    editParameter(kParamDelay,true);
-                setParameterValue(kParamDelay,(float)std::max(0,std::min(MAX_DELAY,(int)fDelay)));
+                    editParameter(kParamFreqelay,true);
+                setParameterValue(kParamFreqelay,(float)std::max(0,std::min(MAX_DELAY,(int)fDelay)));
             }
 
             if (ImGui::IsItemDeactivated())
             {
-                editParameter(kParamDelay, false);
+                editParameter(kParamFreqelay, false);
             }
         }
         //if(!ImGui::IsMouseDown(ImGuiMouseButton_Left)) endDrag();

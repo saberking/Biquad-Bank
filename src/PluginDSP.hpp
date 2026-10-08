@@ -31,10 +31,14 @@ static const char* activationFunctionNames[]={
 class ImGuiPluginDSP : public Plugin
 {
 #define X(i) \
-    float fA##i=0.0f;\
-    float fB##i=0.f;\
-    float fC##i=0.f;\
-    float fD##i=0.f;
+    float fInPan##i=0.0f;\
+    float fInPOff##i=0.f;\
+    float fFeed##i=0.f;\
+    float fFreq##i=0.f;\
+    float fOutPan##i=0.f;\
+    float fOutPOff##i=0.f;\
+    float fLvl##i=0.f;\
+    float fPhs##i=0.f;
 
     BIQUAD_LIST
 #undef X
@@ -44,26 +48,18 @@ class ImGuiPluginDSP : public Plugin
     std::normal_distribution<float> d;
     float note=1.f,lastNote=1.f;
 public:
-    void swapPointers()
-    {
-        std::atomic<float *> temp=currentBufferPointer.load(std::memory_order_acquire);
-        currentBufferPointer.store(spareBufferPointer,std::memory_order_release);
-        spareBufferPointer.store(temp,std::memory_order_release);
-    }
+
     std::atomic<ActivationFunctionType> activation=activationFunctionClip;
-    float max_eigenvalue=1.f;
-    std::atomic<bool> updateReady=false;
-    int lastDelay=0;
+    float lastDelay=0;
 
     UndoItem *undoItems[MAX_UNDO_DEPTH];
     int nextUndoIndex=0;
     int undoCount=0,redoCount=0;
-    alignas(64) float weightBuffer1[OUT_SIZE*(OUT_SIZE)];
-    alignas(64) float weightBuffer2[OUT_SIZE*(OUT_SIZE)];
-    std::atomic<float *> currentBufferPointer,spareBufferPointer;
-    alignas(64) float inputBuffer[MAX_DELAY+1][OUT_SIZE];
+
+    Eigen::Array<float, 25, MAX_DELAY+1>XVector, YVector;
+    Eigen::Array<float, 25, 1> rCosTheta, rSinTheta;
+    Eigen::Array<float, 25,1>outputVectorX, outputVectorY;
     int inputBufferIndex=0;
-    alignas(64) float outputBuffer[OUT_SIZE];
     ImGuiPluginDSP()
         : Plugin(kParamCount, 0, 1) // parameters, programs, states
     {
@@ -77,26 +73,12 @@ public:
             undoItems[i]=NULL;
         }
 
-        for(int i=0;i<OUT_SIZE*(OUT_SIZE);i++)
-        {
-            weightBuffer1[i]=0.f;
-        }
 
-        for(int i=0;i<MAX_DELAY+1;i++)
-        {
-            for(int j=0;j<OUT_SIZE;j++)
-            {
-               inputBuffer[i][j]=0.f;
-
-            }
-        }
         std::srand(std::time(nullptr));
         std::random_device rd;
         gen.seed(rd()); // Seed this specific instance with a hardware random
 
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>> W(weightBuffer1);
-        W.diagonal().setConstant(1.f);
-        currentBufferPointer.store(weightBuffer1,std::memory_order_release);
+        XVector.row(0).setZero();
     }
 
     float findMaxAmplification(float* outPointer)
@@ -335,7 +317,18 @@ protected:
             break;
         }
     }
+    void calculateMatrix()
+    {
+#define X(i) \
+        outputVectorX(i)=std::cos(fD##i)*fC##i;\
+        outputVectorY(i)=std::sin(fD##i)*fC##i;\
+        \
+        rCosTheta(i)=std::cos(fB##i)*fA##i;\
+        rSinTheta(i)=std::sin(fB##i)*fA##i;
 
+        BIQUAD_LIST
+#undef X
+    }
 
     void run ( const float **inputs, float **outputs, uint32_t frames,
              const MidiEvent *midiEvents, // MIDI pointer
@@ -353,16 +346,10 @@ protected:
         //     updateReady.store(false,std::memory_order_release);
 
         // }
-        int delay=(int)std::max(0.f,std::min(fDelay*note,(float)MAX_DELAY));
-        int currentLoopDelay=lastDelay;
-        int lastLoopDelay=currentLoopDelay;
-        Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE, Eigen::RowMajor>, Eigen::Aligned64>
-            W(currentBufferPointer.load(std::memory_order_acquire));
+        float delay=std::max(0.f,std::min(fDelay*note,(float)MAX_DELAY));
+        float currentLoopDelay=lastDelay;
+        float lastLoopDelay=currentLoopDelay;
 
-        // Eigen::Map<Eigen::Matrix<float, OUT_SIZE, OUT_SIZE,
-        //                          Eigen::RowMajor>> W(currentBufferPointer.load(std::memory_order_relaxed));
-
-        Eigen::Map<Eigen::Vector<float, OUT_SIZE>> y(outputBuffer);
 
         for (uint32_t sample = 0; sample < frames; ++sample) {
             while ( curEventIndex < midiEventCount && sample == midiEvents[curEventIndex].frame )
@@ -372,11 +359,11 @@ protected:
             }
             if(note!=lastNote)
             {
-                delay=(int)std::max(0.f,std::min(fDelay*note,(float)MAX_DELAY));
+                delay=std::max(0.f,std::min(fDelay*note,(float)MAX_DELAY));
                 lastNote=note;
             }
-            int temp=delay-lastDelay;
-            int temp2=(temp*((int)sample+1))/(int)frames;
+            float temp=delay-lastDelay;
+            float temp2=(temp*(float)(sample+1))/(float)frames;
 
             currentLoopDelay=lastDelay+temp2;
             int newIndex=(inputBufferIndex+lastLoopDelay-currentLoopDelay+MAX_DELAY+1)%(MAX_DELAY+1);
@@ -385,40 +372,16 @@ protected:
                     "    temp"<<temp<<"    temp2 "<<temp2<<  std::endl;
             else inputBufferIndex=newIndex;
             lastLoopDelay=currentLoopDelay;
-            Eigen::Map<Eigen::Vector<float, OUT_SIZE>> x(inputBuffer[inputBufferIndex]);
-            // Append your 4 special parameters to the remaining 4 slots of x
-            // x[OUT_SIZE] = fA;
-            // x[OUT_SIZE+1] = fB;
-            // x[OUT_SIZE+2] = fC;
-            // x[OUT_SIZE+3] = fD;
-            // 1. Load your sample into your input vector 'x' here...
-            x[0]=inputs[0][sample];x[1]=inputs[1][sample];
 
 
-            const float* rawW = W.data();
-            const float* rawX = x.data();
-            float*       rawY = y.data();
+
+            XVector.column(inputBufferIndex)+=inputs[0];
 
 
-            // 2. Your ultra-fast, thread-safe unrolled loop compiles perfectly now!
-            for (int r = 0; r < OUT_SIZE; ++r) {
-                float sum = 0.0f;
 
-                // Use rawW instead of the Eigen object W
-                const float* rowPtr = &rawW[r * STRIDE];
 
-                for (int c = 0; c < STRIDE; ++c) {
-                    sum += rowPtr[c] * rawX[c];
-                }
 
-                // if(r>2&&sum<-0.5f)
-                // {
-                //         sum=sum*0.8-0.1f;
 
-                // }
-
-                rawY[r] = sum;
-            }
             if(activationFunction==activationFunctionClip)
             {
                 y = y.array().cwiseMax(-1.0f).cwiseMin(1.0f);
@@ -454,39 +417,59 @@ protected:
 
 // Handle standard biquad parameter generations
 #define X(i) \
-        if(index == kParamA##i) { \
+        if(index == kParamInPan##i) { \
                 parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
-                parameter.name = "Biquad " #i " A"; \
-                parameter.symbol = "biquad_" #i "_a"; \
-                parameter.hints=kParameterIsAutomatable; \
+                parameter.name = "Biquad " #i " InPan"; \
+                parameter.symbol = "biquad_" #i "_in_pan"; \
                 return; \
         } \
-            if(index == kParamB##i) { \
+            if(index == kParamInPOff##i) { \
                 parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
-                parameter.name = "Biquad " #i " B"; \
-                parameter.symbol = "biquad_" #i "_b"; \
-                                    parameter.hints=kParameterIsAutomatable; \
+                parameter.name = "Biquad " #i " InPOff"; \
+                parameter.symbol = "biquad_" #i "_in_p_off"; \
                 return; \
         } \
-            if(index == kParamC##i) { \
+            if(index == kParamFeed##i) { \
                 parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
-                parameter.name = "Biquad " #i " C"; \
-                parameter.symbol = "biquad_" #i "_c"; \
-                        parameter.hints=kParameterIsAutomatable; \
+                parameter.name = "Biquad " #i " Feed"; \
+                parameter.symbol = "biquad_" #i "_feed"; \
                 return; \
         } \
-            if(index == kParamD##i) { \
+            if(index == kParamFreq##i) { \
                 parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
-                parameter.name = "Biquad " #i " D"; \
-                parameter.symbol = "biquad_" #i "_d"; \
-                        parameter.hints=kParameterIsAutomatable; \
+                parameter.name = "Biquad " #i " Freq"; \
+                parameter.symbol = "biquad_" #i "_freq"; \
+                return; \
+        }\
+        if(index == kParamOutPan##i) { \
+                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.name = "Biquad " #i " OutPan"; \
+                parameter.symbol = "biquad_" #i "_out_pan"; \
+                return; \
+        } \
+            if(index == kParamOutPOff##i) { \
+                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.name = "Biquad " #i " OutPOff"; \
+                parameter.symbol = "biquad_" #i "_out_p_off"; \
+                return; \
+        } \
+            if(index == kParamLvl##i) { \
+                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.name = "Biquad " #i " Lvl"; \
+                parameter.symbol = "biquad_" #i "_lvl"; \
+                return; \
+        } \
+            if(index == kParamPhs##i) { \
+                parameter.ranges = ParameterRanges(0.f, -1.f, 1.f); \
+                parameter.name = "Biquad " #i " Phs"; \
+                parameter.symbol = "biquad_" #i "_phs"; \
                 return; \
         }
         BIQUAD_LIST
 #undef X
 
             // Handle Delay
-            if(index == kParamDelay) {
+            if(index == kParamFreqelay) {
             parameter.ranges = ParameterRanges(0.f, 0.f, MAX_DELAY);
             parameter.name = "Delay";
             parameter.symbol = "delay";
@@ -497,22 +480,34 @@ protected:
     {
 
 #define X(i) \
-        if(index == kParamA##i) { \
-                return fA##i; \
+        if(index == kParamInPan##i) { \
+                return fInPan##i; \
         } \
-        if(index==kParamB##i){\
-            return fB##i;\
+        if(index==kParamInPOff##i){\
+            return fInPOff##i;\
         }\
-        if(index==kParamC##i){\
-            return fC##i;\
+        if(index==kParamFeed##i){\
+            return fFeed##i;\
         }\
-        if(index==kParamD##i){\
-            return fD##i;\
+        if(index==kParamFreq##i){\
+            return fFreq##i;\
+        }\
+        if(index == kParamOutPan##i) { \
+                return fOutPan##i; \
+        } \
+            if(index==kParamOutPOff##i){\
+                return fOutPOff##i;\
+        }\
+            if(index==kParamFeed##i){\
+                return fFeed##i;\
+        }\
+            if(index==kParamFreq##i){\
+                return fFreq##i;\
         }
         BIQUAD_LIST
 #undef X
 
-        if(index==kParamDelay){
+        if(index==kParamFreqelay){
             return fDelay;
         }
     }
@@ -521,24 +516,36 @@ protected:
     void setParameterValue(uint32_t index, float value) override
     {
         #define X(i) \
-        if(index==kParamA##i){\
-            fA##i=value;\
+        if(index==kParamInPan##i){\
+            fInPan##i=value;\
         }\
-        if(index==kParamB##i){\
-            fB##i=value;\
+        if(index==kParamInPOff##i){\
+            fInPOff##i=value;\
         }\
-        if(index==kParamC##i){\
-            fC##i=value;\
+        if(index==kParamFeed##i){\
+            fFeed##i=value;\
         }\
-        if(index==kParamD##i){\
-            fD##i=value;\
+        if(index==kParamFreq##i){\
+            fFreq##i=value;\
+        }\
+        if(index==kParamOutPan##i){\
+                fOutPan##i=value;\
+        }\
+            if(index==kParamOutPOff##i){\
+                fOutPOff##i=value;\
+        }\
+            if(index==kParamLvl##i){\
+                fLvl##i=value;\
+        }\
+            if(index==kParamPhs##i){\
+                fPhs##i=value;\
         }
 
         BIQUAD_LIST
 #undef X
 
 
-        if(index==kParamDelay){
+        if(index==kParamFreqelay){
             fDelay=value;
         }
 
