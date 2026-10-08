@@ -107,7 +107,7 @@ public:
         inL(0)=one;inR(0)=one;
         lambda(0)=std::complex(0.5f,0.1f);
         outL(0)=one;outR(0)=one;
-        Eigen::Array<float, 25, 1> matrix;
+        Eigen::Array<std::complex<float>, 25, 1> matrix;
         matrix.setRandom();
         float noiseAmount=0.1f;
         inL+=matrix*noiseAmount;
