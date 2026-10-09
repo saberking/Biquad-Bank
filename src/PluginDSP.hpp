@@ -11,6 +11,7 @@
 #include <ctime>
 #include "external/Eigen/SVD" // Make sure to include the SVD header at the top of your file
 #include <random> // <-- ADD THIS LINE HERE
+#include <chrono>
 
 START_NAMESPACE_DISTRHO
     enum ActivationFunctionType{
@@ -223,15 +224,42 @@ protected:
 #undef X
     }
     int count=0;
+
+    std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
+    float time1=0, time2=0, time3=0, time4=0, time5=0, time6=0, time7=0, time8=0;
+    int framecounter=0;
+    void printTime()
+    {
+        std::cout<<"Time"<<std::endl;
+        std::cout<<time1<<"    "<<time2<<"   "<<time3<<"    "<<time4<<"   "<<time5<<"    "<<time6<<"   "<<time7<<"    "<<time8<<std::endl;
+        time1=time2=time3=time4=time5=time6=time7=time8=0.f;
+    }
+    void startTimer(){
+        start= std::chrono::steady_clock::now();
+    }
+    float getTimeInterval(){
+        std::chrono::steady_clock::time_point end;
+
+        end= std::chrono::steady_clock::now();
+        // 1. Get seconds as a float (e.g., 0.01234 seconds)
+        float seconds = std::chrono::duration<float>(end - start).count();
+        float milliseconds = std::chrono::duration<float, std::milli>(end - start).count();
+        startTimer();
+        return milliseconds;
+    }
+
+
+
     void run ( const float **inputs, float **outputs, uint32_t frames,
              const MidiEvent *midiEvents, // MIDI pointer
              uint32_t midiEventCount      // Number of MIDI events in block
              ) override
     {
-        // if(!(count++%1000))
-        // {
-        //     std::cout<<"run"<<std::endl;
-        // }
+        startTimer();
+        if(!(count++%1000))
+        {
+            printTime();
+        }
         int curEventIndex =0;
 
         ActivationFunctionType activationFunction=activation.load(std::memory_order_release);
@@ -241,6 +269,7 @@ protected:
         float currentLoopDelay=lastDelay;
         float lastLoopDelay=currentLoopDelay;
 
+        time1+=getTimeInterval();
 
         for (uint32_t sample = 0; sample < frames; ++sample) {
             while ( curEventIndex < midiEventCount && sample == midiEvents[curEventIndex].frame )
@@ -261,8 +290,11 @@ protected:
             int newIndex=(inputBufferIndex+1)%(MAX_DELAY+1);
             state[newIndex]=state[inputBufferIndex];
             inputBufferIndex=newIndex;
+            time2+=getTimeInterval();
             state[inputBufferIndex]+=inL*inputs[0][sample]+inR*inputs[1][sample];
+            time3+=getTimeInterval();
             state[inputBufferIndex]*=lambda;
+            time4+=getTimeInterval();
             // state[inputBufferIndex].real() = state[inputBufferIndex].real().cwiseMax(-1.0f).cwiseMin(1.0f);
             // state[inputBufferIndex].imag() = state[inputBufferIndex].imag().cwiseMax(-1.0f).cwiseMin(1.0f);
             outputs[0][sample] = clip(2.f*std::real(outL.matrix().dot(state[inputBufferIndex].matrix())));
@@ -270,6 +302,7 @@ protected:
 
 
             lastLoopDelay=currentLoopDelay;
+            time5+=getTimeInterval();
 
         }
         lastDelay=lastLoopDelay;
