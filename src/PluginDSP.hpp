@@ -256,10 +256,7 @@ protected:
              ) override
     {
         startTimer();
-        if(!(count++%1000))
-        {
-            printTime();
-        }
+
         int curEventIndex =0;
 
         ActivationFunctionType activationFunction=activation.load(std::memory_order_release);
@@ -303,7 +300,7 @@ protected:
 
             lastLoopDelay=currentLoopDelay;
             time5+=getTimeInterval();
-
+            if(!(framecounter++%48000)) printTime();
         }
         lastDelay=lastLoopDelay;
 
